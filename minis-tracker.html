@@ -34,15 +34,16 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwByYnC5Knnt6MTnqsWH
 
 const { useState, useEffect, useCallback, useRef } = React;
 
-const STAGES = ["Unbuilt", "Built", "Primed", "Painted", "Done"];
+const STAGES = ["Unbuilt", "Built", "Primed", "Painting", "Painted", "Painted & Based"];
 const STAGE_COLORS = {
-  "Unbuilt": { bg: "#1a1a2e", border: "#3a3a5e", text: "#666",    dot: "#2e2e4e" },
-  "Built":   { bg: "#1e1e1e", border: "#5a4a2a", text: "#8a7a5a", dot: "#4a3a1e" },
-  "Primed":  { bg: "#1e1a1a", border: "#6a3a3a", text: "#9a6a6a", dot: "#4a2020" },
-  "Painted": { bg: "#1a1a1e", border: "#3a4a8a", text: "#6a7aba", dot: "#1e2a5a" },
-  "Done":    { bg: "#1a1e16", border: "#7a9a3a", text: "#aada6a", dot: "#3a5a10" },
+  "Unbuilt":        { bg: "#1a1a2e", border: "#3a3a5e", text: "#666",    dot: "#2e2e4e" },
+  "Built":          { bg: "#1e1e1e", border: "#5a4a2a", text: "#8a7a5a", dot: "#4a3a1e" },
+  "Primed":         { bg: "#1e1a1a", border: "#6a3a3a", text: "#9a6a6a", dot: "#4a2020" },
+  "Painting":       { bg: "#1e1a1e", border: "#7a4a8a", text: "#ba7aba", dot: "#4a1a5a" },
+  "Painted":        { bg: "#1a1a1e", border: "#3a4a8a", text: "#6a7aba", dot: "#1e2a5a" },
+  "Painted & Based":{ bg: "#1a1e16", border: "#7a9a3a", text: "#aada6a", dot: "#3a5a10" },
 };
-const STAGE_SHORT = { "Unbuilt":"Unblt","Built":"Built","Primed":"Prmd","Painted":"Pntd","Done":"Done" };
+const STAGE_SHORT = { "Unbuilt":"Unblt","Built":"Built","Primed":"Prmd","Painting":"WIP","Painted":"Pntd","Painted & Based":"Done" };
 
 const GAME_SYSTEMS = [
   { id:"40k", name:"Warhammer 40K", color:"#9a3a2a", icon:"☠", factions:[
@@ -77,7 +78,7 @@ const ARMY_PALETTE = [
 
 const emptyStages = () => Object.fromEntries(STAGES.map(s => [s, 0]));
 const totalModels = p => STAGES.reduce((a, s) => a + (p.stageCounts[s] || 0), 0);
-const doneModels  = p => p.stageCounts["Done"] || 0;
+const doneModels  = p => p.stageCounts["Painted & Based"] || 0;
 
 // ── Google Sheets API ─────────────────────────────────────────
 // Sheet layout: two tabs — "armies" and "units"
@@ -128,11 +129,12 @@ function parseUnits(data) {
     name: r[2] || "",
     notes: r[3] || "",
     stageCounts: {
-      Unbuilt: parseInt(r[4]) || 0,
-      Built:   parseInt(r[5]) || 0,
-      Primed:  parseInt(r[6]) || 0,
-      Painted: parseInt(r[7]) || 0,
-      Done:    parseInt(r[8]) || 0,
+      Unbuilt:          parseInt(r[4]) || 0,
+      Built:            parseInt(r[5]) || 0,
+      Primed:           parseInt(r[6]) || 0,
+      Painting:         parseInt(r[7]) || 0,
+      Painted:          parseInt(r[8]) || 0,
+      "Painted & Based":parseInt(r[9]) || 0,
     }
   }));
 }
@@ -342,6 +344,8 @@ function App() {
   const [status,          setStatus]          = useState("loading"); // loading | ready | error | saving
   const [dragId,          setDragId]          = useState(null);
   const [dragOverId,      setDragOverId]      = useState(null);
+  const [armyDragId,      setArmyDragId]      = useState(null);
+  const [armyDragOverId,  setArmyDragOverId]  = useState(null);
   const [errorMsg,        setErrorMsg]        = useState("");
   const saveTimer = useRef(null);
 
@@ -380,7 +384,7 @@ function App() {
     saveTimer.current = setTimeout(async () => {
       try {
         const armyRows     = [["id","gameSystemId","faction","customName","name","color"], ...newArmies.map(armyToRow)];
-        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painted","Done"], ...newProjects.map(unitToRow)];
+        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painting","Painted","Painted & Based"], ...newProjects.map(unitToRow)];
         const settingsRows = [["key","value"], ...Object.entries(newSettings).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
         await saveAll(armyRows, unitRows, settingsRows);
         setStatus("ready");
@@ -461,6 +465,17 @@ function App() {
     setProjects(arr);
     scheduleSave(armies, arr, getSettings());
     setDragId(null); setDragOverId(null);
+  };
+
+  const reorderArmies = (fromId, toId) => {
+    if (fromId === toId) return;
+    const arr = [...armies];
+    const fromIdx = arr.findIndex(a => a.id === fromId);
+    const toIdx   = arr.findIndex(a => a.id === toId);
+    const [moved] = arr.splice(fromIdx, 1);
+    arr.splice(toIdx, 0, moved);
+    setArmies(arr);
+    setArmyDragId(null); setArmyDragOverId(null);
   };
 
   const toggleSystem = (id) => {
@@ -552,7 +567,16 @@ function App() {
             <button onClick={()=>{setActiveArmyId("all");setStageFilter("All");}} style={{ background:activeArmyId==="all"?"#161616":"none", border:"none", borderTop:activeArmyId==="all"?`2px solid ${activeSystem?.color||"#888"}88`:"2px solid transparent", borderBottom:activeArmyId==="all"?"1px solid #161616":"1px solid transparent", color:activeArmyId==="all"?"#aaa":"#444", padding:"7px 14px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.05em", whiteSpace:"nowrap", marginBottom:"-1px", zIndex:1, position:"relative" }}>All</button>
             {systemArmies.map(army=>{
               const isActive=activeArmyId===army.id, cnt=projects.filter(p=>p.armyId===army.id).length;
-              return <button key={army.id} onClick={()=>{setActiveArmyId(army.id);setStageFilter("All");}} style={{ background:isActive?"#161616":"none", border:"none", borderTop:isActive?`2px solid ${army.color}`:"2px solid transparent", borderBottom:isActive?"1px solid #161616":"1px solid transparent", color:isActive?army.color:"#444", padding:"7px 14px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em", whiteSpace:"nowrap", marginBottom:"-1px", zIndex:1, position:"relative", display:"flex", alignItems:"center", gap:"5px" }}>
+              const isDragOver = armyDragOverId===army.id;
+              return <button
+                key={army.id}
+                draggable
+                onDragStart={()=>setArmyDragId(army.id)}
+                onDragOver={e=>{e.preventDefault();setArmyDragOverId(army.id);}}
+                onDrop={()=>reorderArmies(armyDragId, army.id)}
+                onDragEnd={()=>{setArmyDragId(null);setArmyDragOverId(null);}}
+                onClick={()=>{setActiveArmyId(army.id);setStageFilter("All");}}
+                style={{ background:isActive?"#161616":"none", border:"none", borderTop:isActive?`2px solid ${army.color}`:isDragOver?`2px solid ${army.color}88`:"2px solid transparent", borderBottom:isActive?"1px solid #161616":"1px solid transparent", color:isActive?army.color:isDragOver?army.color+"88":"#444", padding:"7px 14px", cursor:"grab", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em", whiteSpace:"nowrap", marginBottom:"-1px", zIndex:1, position:"relative", display:"flex", alignItems:"center", gap:"5px", transition:"color 0.15s, border-color 0.15s" }}>
                 <span style={{ width:"5px", height:"5px", borderRadius:"50%", background:army.color, flexShrink:0 }}/>{army.name}
                 <span style={{ fontSize:"10px", opacity:0.5, fontFamily:"monospace", fontWeight:"400" }}>{cnt}</span>
               </button>;
