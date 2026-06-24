@@ -22,6 +22,9 @@
   select option { background: #161616; }
   button:focus { outline: none; }
   input, select { -webkit-appearance: none; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
 </style>
 </head>
 <body>
@@ -153,18 +156,19 @@ function unitToRow(p) { return [String(p.id), String(p.armyId), p.name, p.notes|
 
 function ProjectCard({ project, onEdit, onDelete, onUpdateCounts, onDragStart, onDragOver, onDrop, isDragOver }) {
   const total = totalModels(project), done = doneModels(project);
-  const move = (stage, delta) => {
-    const cur = project.stageCounts[stage] || 0;
-    if (cur + delta < 0) return;
-    onUpdateCounts(project.id, { ...project.stageCounts, [stage]: cur + delta });
+
+  const setStageValue = (stage, val) => {
+    const n = Math.max(0, parseInt(val) || 0);
+    onUpdateCounts(project.id, { ...project.stageCounts, [stage]: n });
   };
+
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragOver={e=>{e.preventDefault();onDragOver();}}
       onDrop={onDrop}
-      style={{ background:"#121212", border:`1px solid ${isDragOver?"#5a5a9a":"#2a2a2a"}`, borderRadius:"6px", overflow:"hidden", opacity:1, transition:"border-color 0.15s", cursor:"grab" }}
+      style={{ background:"#121212", border:`1px solid ${isDragOver?"#5a5a9a":"#2a2a2a"}`, borderRadius:"6px", overflow:"hidden", transition:"border-color 0.15s" }}
     >
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px 8px" }}>
         <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
@@ -190,17 +194,26 @@ function ProjectCard({ project, onEdit, onDelete, onUpdateCounts, onDragStart, o
           })}
         </div>
       )}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:"2px", padding:"0 10px 10px" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:"2px", padding:"0 10px 10px" }}>
         {STAGES.map(s => {
           const cnt=project.stageCounts[s]||0, sc=STAGE_COLORS[s], active=cnt>0;
           return (
-            <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"5px 3px", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", transition:"background 0.2s" }}>
-              <div style={{ color:active?sc.text:"#333", fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.03em", lineHeight:1 }}>{STAGE_SHORT[s]}</div>
-              <div style={{ color:active?"#e8e0d0":"#333", fontSize:"13px", fontFamily:"'Cinzel',serif", fontWeight:"600", lineHeight:1 }}>{cnt}</div>
-              <div style={{ display:"flex", gap:"2px" }}>
-                <button onClick={()=>move(s,-1)} disabled={cnt===0} style={{ background:"none", border:`1px solid ${cnt>0?"#3a3a3a":"#1e1e1e"}`, color:cnt>0?"#888":"#2a2a2a", borderRadius:"3px", width:"16px", height:"16px", cursor:cnt>0?"pointer":"default", fontSize:"12px", padding:0, display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
-                <button onClick={()=>move(s,1)}  style={{ background:"none", border:"1px solid #3a3a3a", color:"#888", borderRadius:"3px", width:"16px", height:"16px", cursor:"pointer", fontSize:"12px", padding:0, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
-              </div>
+            <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"5px 4px", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", transition:"background 0.2s, border-color 0.2s" }}>
+              <div style={{ color:active?sc.text:"#333", fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.03em", lineHeight:1, textAlign:"center" }}>{STAGE_SHORT[s]}</div>
+              <input
+                type="number"
+                min="0"
+                value={cnt}
+                onChange={e => setStageValue(s, e.target.value)}
+                onFocus={e => e.target.select()}
+                style={{
+                  width:"100%", background:"none", border:"none",
+                  color:active?"#e8e0d0":"#333",
+                  fontFamily:"'Cinzel',serif", fontSize:"15px", fontWeight:"700",
+                  textAlign:"center", padding:"0", cursor:"text",
+                  WebkitAppearance:"none", MozAppearance:"textfield",
+                }}
+              />
             </div>
           );
         })}
