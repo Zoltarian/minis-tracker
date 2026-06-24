@@ -89,17 +89,23 @@ const doneModels  = p => p.stageCounts["Done"] || 0;
 async function readAll() {
   const r = await fetch(SCRIPT_URL + "?action=read");
   if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 async function saveAll(armies, units, settings) {
-  const r = await fetch(SCRIPT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "save", armies, units, settings }),
+  const params = new URLSearchParams({
+    action:   "save",
+    armies:   JSON.stringify(armies),
+    units:    JSON.stringify(units),
+    settings: JSON.stringify(settings),
   });
+  const r = await fetch(SCRIPT_URL + "?" + params.toString());
   if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 function parseArmies(data) {
