@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Minis">
+<title>⚔ Minis Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #0e0e0e; color: #e8e0d0; font-family: 'Segoe UI', sans-serif; }
+  #root { min-height: 100%; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #111; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  select option { background: #161616; }
+  button:focus { outline: none; }
+  input, select { -webkit-appearance: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ── CONFIG ───────────────────────────────────────────────────
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwByYnC5Knnt6MTnqsWHkukflOySrS4M3cy2UPo0blAxh4gIEetpzurf0i5IxubMu6tmg/exec";
+// ─────────────────────────────────────────────────────────────
+
+const { useState, useEffect, useCallback, useRef } = React;
+
+const STAGES = ["Unbuilt", "Built", "Primed", "Painted", "Done"];
+const STAGE_COLORS = {
+  "Unbuilt": { bg: "#1a1a2e", border: "#3a3a5e", text: "#666",    dot: "#2e2e4e" },
+  "Built":   { bg: "#1e1e1e", border: "#5a4a2a", text: "#8a7a5a", dot: "#4a3a1e" },
+  "Primed":  { bg: "#1e1a1a", border: "#6a3a3a", text: "#9a6a6a", dot: "#4a2020" },
+  "Painted": { bg: "#1a1a1e", border: "#3a4a8a", text: "#6a7aba", dot: "#1e2a5a" },
+  "Done":    { bg: "#1a1e16", border: "#7a9a3a", text: "#aada6a", dot: "#3a5a10" },
+};
+const STAGE_SHORT = { "Unbuilt":"Unblt","Built":"Built","Primed":"Prmd","Painted":"Pntd","Done":"Done" };
+
+const GAME_SYSTEMS = [
+  { id:"40k", name:"Warhammer 40K", color:"#9a3a2a", icon:"☠", factions:[
+    "Space Marines","Astra Militarum","Adeptus Custodes","Adepta Sororitas","Adeptus Mechanicus","Imperial Knights","Imperial Agents",
+    "Chaos Space Marines","Death Guard","Thousand Sons","World Eaters","Chaos Daemons","Chaos Knights",
+    "Aeldari","Drukhari","Tyranids","Orks","Necrons","T'au Empire","Genestealer Cults","Leagues of Votann",
+  ]},
+  { id:"aos", name:"Age of Sigmar", color:"#8a7a2a", icon:"⚡", factions:[
+    "Stormcast Eternals","Cities of Sigmar","Daughters of Khaine","Fyreslayers","Idoneth Deepkin","Kharadron Overlords","Lumineth Realm-Lords","Seraphon","Sylvaneth",
+    "Blades of Khorne","Disciples of Tzeentch","Maggotkin of Nurgle","Hedonites of Slaanesh","Skaven","Slaves to Darkness","Beasts of Chaos",
+    "Flesh-Eater Courts","Nighthaunt","Ossiarch Bonereapers","Soulblight Gravelords",
+    "Gloomspite Gitz","Ironjawz","Kruleboyz","Bonesplitterz","Ogor Mawtribes","Sons of Behemat",
+  ]},
+  { id:"sc",  name:"StarCraft",        color:"#2a6a9a", icon:"★", factions:["Terran","Zerg","Protoss"] },
+  { id:"whf", name:"Warhammer Fantasy",color:"#4a7a3a", icon:"🐉", factions:[
+    "The Empire","Bretonnia","Kislev","Dwarfs","High Elves","Wood Elves","Dark Elves","Lizardmen","Skaven",
+    "Orcs & Goblins","Ogre Kingdoms","Tomb Kings","Vampire Counts","Warriors of Chaos","Daemons of Chaos","Beastmen","Chaos Dwarfs","Grand Cathay",
+  ]},
+];
+
+const ARMY_PALETTE = [
+  "#4a6a9a","#2a5a8a","#3a7a9a","#5a5a8a",
+  "#5a7a4a","#3a8a6a","#6a8a3a","#3a6a4a",
+  "#9a4a4a","#8a3a3a","#9a4a6a","#8a4a6a",
+  "#7a5a9a","#5a3a8a","#6a3a7a",
+  "#9a7a3a","#9a6a2a","#8a6a4a","#9a8a3a",
+  "#3a8a8a","#2a7a8a","#4a8a9a",
+  "#7a7a7a","#5a5a5a","#3a3a3a",
+  "#c8c0b0","#1a1a1a",
+  "#9a8a6a","#7a6a5a",
+];
+
+const emptyStages = () => Object.fromEntries(STAGES.map(s => [s, 0]));
+const totalModels = p => STAGES.reduce((a, s) => a + (p.stageCounts[s] || 0), 0);
+const doneModels  = p => p.stageCounts["Done"] || 0;
+
+// ── Google Sheets API ─────────────────────────────────────────
+// Sheet layout: two tabs — "armies" and "units"
+// armies: id | gameSystemId | faction | customName | name | color
+// units:  id | armyId | name | notes | Unbuilt | Built | Primed | Painted | Done
+// settings: stored in a "settings" tab as key|value rows
+
+// ── Sheet helpers ─
+async function readAll() {
+  const r = await fetch(SCRIPT_URL + "?action=read");
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function saveAll(armies, units, settings) {
+  const r = await fetch(SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "save", armies, units, settings }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function parseArmies(data) {
+  const rows = (data.values || []).slice(1); // skip header
+  return rows.filter(r => r[0]).map(r => ({
+    id: parseInt(r[0]),
+    gameSystemId: r[1] || "40k",
+    faction: r[2] || "",
+    customName: r[3] || "",
+    name: r[4] || r[2] || "",
+    color: r[5] || ARMY_PALETTE[0],
+  }));
+}
+
+function parseUnits(data) {
+  const rows = (data.values || []).slice(1);
+  return rows.filter(r => r[0]).map(r => ({
+    id: parseInt(r[0]),
+    armyId: parseInt(r[1]),
+    name: r[2] || "",
+    notes: r[3] || "",
+    stageCounts: {
+      Unbuilt: parseInt(r[4]) || 0,
+      Built:   parseInt(r[5]) || 0,
+      Primed:  parseInt(r[6]) || 0,
+      Painted: parseInt(r[7]) || 0,
+      Done:    parseInt(r[8]) || 0,
+    }
+  }));
+}
+
+function parseSettings(data) {
+  const rows = (data.values || []).slice(1);
+  const out = {};
+  rows.filter(r => r[0]).forEach(r => { out[r[0]] = r[1]; });
+  return out;
+}
+
+function armyToRow(a) { return [String(a.id), a.gameSystemId, a.faction, a.customName||"", a.name, a.color]; }
+function unitToRow(p) { return [String(p.id), String(p.armyId), p.name, p.notes||"", ...STAGES.map(s => String(p.stageCounts[s]||0))]; }
+
+// ── Components ────────────────────────────────────────────────
+
+function ProjectCard({ project, onEdit, onDelete, onUpdateCounts }) {
+  const total = totalModels(project), done = doneModels(project);
+  const move = (stage, delta) => {
+    const cur = project.stageCounts[stage] || 0;
+    if (cur + delta < 0) return;
+    onUpdateCounts(project.id, { ...project.stageCounts, [stage]: cur + delta });
+  };
+  return (
+    <div style={{ background:"#121212", border:"1px solid #2a2a2a", borderRadius:"6px", overflow:"hidden" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px 8px" }}>
+        <div>
+          <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", letterSpacing:"0.02em" }}>{project.name}</div>
+          <div style={{ color:"#555", fontSize:"11px", marginTop:"2px", fontFamily:"monospace" }}>
+            {total} {total===1?"model":"models"}
+            {done>0 && <span style={{ color:"#5a7a2a", marginLeft:"6px" }}>· {done} done</span>}
+            {project.notes && <span style={{ color:"#444", marginLeft:"6px", fontStyle:"italic" }}>· {project.notes}</span>}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:"5px" }}>
+          <button onClick={()=>onEdit(project)} style={{ background:"none", border:"1px solid #2a2a2a", color:"#666", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Edit</button>
+          <button onClick={()=>onDelete(project.id)} style={{ background:"none", border:"1px solid #3a2020", color:"#5a3a3a", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>✕</button>
+        </div>
+      </div>
+      {total>0 && (
+        <div style={{ display:"flex", gap:"2px", padding:"0 14px", marginBottom:"10px" }}>
+          {STAGES.map(s => { const cnt=project.stageCounts[s]; if(!cnt)return null;
+            return <div key={s} title={`${s}: ${cnt}`} style={{ flex:(cnt/total)*100, height:"5px", background:STAGE_COLORS[s].border, borderRadius:"2px", minWidth:"4px", transition:"flex 0.25s" }}/>;
+          })}
+        </div>
+      )}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:"2px", padding:"0 10px 10px" }}>
+        {STAGES.map(s => {
+          const cnt=project.stageCounts[s]||0, sc=STAGE_COLORS[s], active=cnt>0;
+          return (
+            <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"5px 3px", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", transition:"background 0.2s" }}>
+              <div style={{ color:active?sc.text:"#333", fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.03em", lineHeight:1 }}>{STAGE_SHORT[s]}</div>
+              <div style={{ color:active?"#e8e0d0":"#333", fontSize:"13px", fontFamily:"'Cinzel',serif", fontWeight:"600", lineHeight:1 }}>{cnt}</div>
+              <div style={{ display:"flex", gap:"2px" }}>
+                <button onClick={()=>move(s,-1)} disabled={cnt===0} style={{ background:"none", border:`1px solid ${cnt>0?"#3a3a3a":"#1e1e1e"}`, color:cnt>0?"#888":"#2a2a2a", borderRadius:"3px", width:"16px", height:"16px", cursor:cnt>0?"pointer":"default", fontSize:"12px", padding:0, display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+                <button onClick={()=>move(s,1)}  style={{ background:"none", border:"1px solid #3a3a3a", color:"#888", borderRadius:"3px", width:"16px", height:"16px", cursor:"pointer", fontSize:"12px", padding:0, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ArmyModal({ army, gameSystemId, factions, onSave, onClose }) {
+  const [faction,    setFaction]    = useState(army?.faction || factions[0] || "");
+  const [customName, setCustomName] = useState(army?.customName || "");
+  const [color,      setColor]      = useState(army?.color || ARMY_PALETTE[0]);
+  const iStyle = { background:"#111", border:"1px solid #333", color:"#e8e0d0", borderRadius:"4px", padding:"8px 10px", width:"100%", fontFamily:"'Cinzel',serif", fontSize:"13px" };
+  const lStyle = { color:"#888", fontSize:"11px", marginBottom:"4px", textTransform:"uppercase", letterSpacing:"0.08em", fontFamily:"monospace" };
+  const displayName = customName.trim() || faction;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, padding:"20px" }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:"#161616", border:"1px solid #3a3a5e", borderRadius:"8px", padding:"24px", width:"100%", maxWidth:"380px", boxShadow:"0 0 40px rgba(60,60,120,0.3)" }}>
+        <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"17px", fontWeight:"700", marginBottom:"20px" }}>{army?.id?"Edit Army":"New Army"}</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
+          <div><div style={lStyle}>Faction</div>
+            <select style={{ ...iStyle, appearance:"none", cursor:"pointer" }} value={faction} onChange={e=>setFaction(e.target.value)}>
+              {factions.map(f=><option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+          <div><div style={lStyle}>Custom Name <span style={{ color:"#555", textTransform:"none", letterSpacing:0 }}>(optional)</span></div>
+            <input style={iStyle} value={customName} onChange={e=>setCustomName(e.target.value)} placeholder={`e.g. "My ${faction}" or leave blank`}/>
+            {customName.trim()&&<div style={{ color:"#555", fontSize:"11px", marginTop:"4px", fontFamily:"monospace" }}>Will appear as: <span style={{ color:"#888" }}>{customName.trim()}</span></div>}
+          </div>
+          <div><div style={lStyle}>Colour</div>
+            <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+              {ARMY_PALETTE.map(c=><div key={c} onClick={()=>setColor(c)} style={{ width:"28px", height:"28px", borderRadius:"50%", background:c, cursor:"pointer", border:color===c?"2px solid #e8e0d0":"2px solid transparent" }}/>)}
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:"8px", marginTop:"20px", justifyContent:"flex-end" }}>
+          <button onClick={onClose} style={{ background:"none", border:"1px solid #333", color:"#666", borderRadius:"4px", padding:"8px 16px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Cancel</button>
+          <button onClick={()=>onSave({...army, faction, customName:customName.trim(), name:displayName, color, gameSystemId})} style={{ background:"#2a2a4a", border:"1px solid #5a5a9a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600" }}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
+  const init = project?.stageCounts || emptyStages();
+  const [name,        setName]        = useState(project?.name || "");
+  const [armyId,      setArmyId]      = useState(project?.armyId ?? (defaultArmyId || armies[0]?.id));
+  const [notes,       setNotes]       = useState(project?.notes || "");
+  const [stageCounts, setStageCounts] = useState(init);
+  const [totalInput,  setTotalInput]  = useState(String(STAGES.reduce((a,s)=>a+(init[s]||0),0)||""));
+  const currentTotal = STAGES.reduce((a,s)=>a+(stageCounts[s]||0),0);
+  const applyTotal = () => {
+    const n = parseInt(totalInput)||0; if(n<1)return;
+    if(currentTotal===0) setStageCounts({...emptyStages(), Unbuilt:n});
+    else setStageCounts(p=>({...p, Unbuilt:Math.max(0,(p.Unbuilt||0)+(n-currentTotal))}));
+  };
+  const adj = (s,d) => setStageCounts(p=>({...p,[s]:Math.max(0,(p[s]||0)+d)}));
+  const iStyle = { background:"#111", border:"1px solid #333", color:"#e8e0d0", borderRadius:"4px", padding:"8px 10px", width:"100%", fontFamily:"'Cinzel',serif", fontSize:"13px" };
+  const lStyle = { color:"#888", fontSize:"11px", marginBottom:"4px", textTransform:"uppercase", letterSpacing:"0.08em", fontFamily:"monospace" };
+  const canSave = name.trim() && currentTotal>0;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, padding:"20px" }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:"#161616", border:"1px solid #3a3a5e", borderRadius:"8px", padding:"24px", width:"100%", maxWidth:"440px", boxShadow:"0 0 40px rgba(60,60,120,0.3)", maxHeight:"92vh", overflowY:"auto" }}>
+        <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"17px", fontWeight:"700", marginBottom:"20px" }}>{project?.id?"Edit Unit":"Add Unit"}</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
+          <div><div style={lStyle}>Name</div><input style={iStyle} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Clanrat Regiment"/></div>
+          <div><div style={lStyle}>Army</div>
+            <select style={{ ...iStyle, appearance:"none" }} value={armyId} onChange={e=>setArmyId(parseInt(e.target.value))}>
+              {armies.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div><div style={lStyle}>Total Models</div>
+            <div style={{ display:"flex", gap:"8px" }}>
+              <input style={{ ...iStyle, width:"100px" }} type="number" min="1" value={totalInput} onChange={e=>setTotalInput(e.target.value.replace(/^0+/,""))} onKeyDown={e=>e.key==="Enter"&&applyTotal()} placeholder="e.g. 60"/>
+              <button onClick={applyTotal} style={{ background:"#1e1e2e", border:"1px solid #4a4a7a", color:"#8888cc", borderRadius:"4px", padding:"8px 14px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Set → Unbuilt</button>
+            </div>
+            {currentTotal>0&&<div style={{ color:"#555", fontSize:"11px", marginTop:"5px", fontFamily:"monospace" }}>{currentTotal} model{currentTotal!==1?"s":""} assigned</div>}
+          </div>
+          <div><div style={lStyle}>Stage Breakdown</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:"5px" }}>
+              {STAGES.map(s=>{ const cnt=stageCounts[s]||0, sc=STAGE_COLORS[s]; return (
+                <div key={s} style={{ display:"flex", alignItems:"center", gap:"8px", background:cnt>0?sc.dot:"#0e0e0e", border:`1px solid ${cnt>0?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"6px 10px", transition:"background 0.2s" }}>
+                  <div style={{ color:cnt>0?sc.text:"#333", fontSize:"11px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em", width:"80px", flexShrink:0 }}>{s}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:"6px", marginLeft:"auto" }}>
+                    <button onClick={()=>adj(s,-1)} disabled={cnt===0} style={{ background:"none", border:`1px solid ${cnt>0?"#444":"#222"}`, color:cnt>0?"#aaa":"#333", borderRadius:"3px", width:"24px", height:"24px", cursor:cnt>0?"pointer":"default", fontSize:"14px", display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+                    <span style={{ color:cnt>0?"#e8e0d0":"#333", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", width:"28px", textAlign:"center" }}>{cnt}</span>
+                    <button onClick={()=>adj(s,1)} style={{ background:"none", border:"1px solid #444", color:"#aaa", borderRadius:"3px", width:"24px", height:"24px", cursor:"pointer", fontSize:"14px", display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
+                  </div>
+                </div>
+              );})}
+            </div>
+          </div>
+          <div><div style={lStyle}>Notes</div><input style={iStyle} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Colour scheme, priority, etc."/></div>
+        </div>
+        <div style={{ display:"flex", gap:"8px", marginTop:"20px", justifyContent:"flex-end" }}>
+          <button onClick={onClose} style={{ background:"none", border:"1px solid #333", color:"#666", borderRadius:"4px", padding:"8px 16px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Cancel</button>
+          <button onClick={()=>canSave&&onSave({...project, name:name.trim(), armyId, notes, stageCounts})} style={{ background:"#2a2a4a", border:"1px solid #5a5a9a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:canSave?"pointer":"default", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", opacity:canSave?1:0.4 }}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Setup screen shown before API keys are configured ─────────
+function SetupScreen() {
+  return (
+    <div style={{ minHeight:"100vh", background:"#0e0e0e", display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }}>
+      <div style={{ maxWidth:"480px", width:"100%" }}>
+        <div style={{ fontFamily:"'Cinzel',serif", fontSize:"24px", fontWeight:"700", color:"#c8b870", marginBottom:"8px" }}>⚔ Minis Tracker</div>
+        <div style={{ color:"#555", fontFamily:"monospace", fontSize:"13px", marginBottom:"28px" }}>Setup required</div>
+        <div style={{ background:"#161616", border:"1px solid #2a2a3a", borderRadius:"8px", padding:"24px", display:"flex", flexDirection:"column", gap:"16px" }}>
+          <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"15px", fontWeight:"600" }}>Open this file in a text editor and fill in:</div>
+          <div style={{ background:"#0a0a0a", border:"1px solid #2a2a2a", borderRadius:"4px", padding:"14px", fontFamily:"monospace", fontSize:"12px", color:"#7a9a5a", lineHeight:1.8 }}>
+            const SHEET_ID = "<span style={{ color:"#c8b870" }}>your-sheet-id</span>";<br/>
+            const API_KEY  = "<span style={{ color:"#c8b870" }}>your-api-key</span>";
+          </div>
+          <div style={{ color:"#555", fontSize:"12px", fontFamily:"monospace", lineHeight:1.7 }}>
+            Your Sheet ID is the long string in the Google Sheets URL.<br/>
+            Get a free API key from console.cloud.google.com → APIs &amp; Services → Credentials.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────
+function App() {
+  const [armies,          setArmies]          = useState([]);
+  const [projects,        setProjects]        = useState([]);
+  const [activeSystemId,  setActiveSystemId]  = useState(null);
+  const [activeArmyId,    setActiveArmyId]    = useState("all");
+  const [stageFilter,     setStageFilter]     = useState("All");
+  const [enabledSystems,  setEnabledSystems]  = useState([]);
+  const [projectModal,    setProjectModal]    = useState(null);
+  const [armyModal,       setArmyModal]       = useState(null);
+  const [systemPickerOpen,setSystemPickerOpen]= useState(false);
+  const [nextArmyId,      setNextArmyId]      = useState(1);
+  const [nextProjectId,   setNextProjectId]   = useState(1);
+  const [status,          setStatus]          = useState("loading"); // loading | ready | error | saving
+  const [errorMsg,        setErrorMsg]        = useState("");
+  const saveTimer = useRef(null);
+
+  const isConfigured = SCRIPT_URL !== "YOUR_SCRIPT_URL_HERE";
+
+  // ── Load from Sheets ──
+  useEffect(() => {
+    if (!isConfigured) return;
+    (async () => {
+      try {
+        const { armies: armyRows, units: unitRows, settings: settingRows } = await readAll();
+        const loadedArmies   = parseArmies({ values: armyRows });
+        const loadedProjects = parseUnits({ values: unitRows });
+        const settings       = parseSettings({ values: settingRows });
+        setArmies(loadedArmies);
+        setProjects(loadedProjects);
+        const maxAid = loadedArmies.reduce((m,a)=>Math.max(m,a.id),0);
+        const maxPid = loadedProjects.reduce((m,p)=>Math.max(m,p.id),0);
+        setNextArmyId(maxAid+1);
+        setNextProjectId(maxPid+1);
+        const es = settings.enabledSystems ? JSON.parse(settings.enabledSystems) : GAME_SYSTEMS.map(g=>g.id);
+        setEnabledSystems(es);
+        setActiveSystemId(settings.activeSystemId || es[0] || "40k");
+        setStatus("ready");
+      } catch(e) {
+        setErrorMsg(e.message);
+        setStatus("error");
+      }
+    })();
+  }, []);
+
+  // ── Debounced save ──
+  const scheduleSave = useCallback((newArmies, newProjects, newSettings) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setStatus("saving");
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const armyRows     = [["id","gameSystemId","faction","customName","name","color"], ...newArmies.map(armyToRow)];
+        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painted","Done"], ...newProjects.map(unitToRow)];
+        const settingsRows = [["key","value"], ...Object.entries(newSettings).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
+        await saveAll(armyRows, unitRows, settingsRows);
+        setStatus("ready");
+      } catch(e) {
+        setStatus("error");
+        setErrorMsg(e.message);
+      }
+    }, 1200);
+  }, []);
+
+  const getSettings = (overrides={}) => ({
+    enabledSystems: overrides.enabledSystems ?? enabledSystems,
+    activeSystemId: overrides.activeSystemId ?? activeSystemId,
+    nextArmyId:     String(overrides.nextArmyId ?? nextArmyId),
+    nextProjectId:  String(overrides.nextProjectId ?? nextProjectId),
+  });
+
+  // ── Derived state ──
+  const activeEnabled = enabledSystems.length>0 ? enabledSystems : GAME_SYSTEMS.map(g=>g.id);
+  const resolvedSid   = activeSystemId && activeEnabled.includes(activeSystemId) ? activeSystemId : activeEnabled[0];
+  const activeSystem  = GAME_SYSTEMS.find(g=>g.id===resolvedSid) || GAME_SYSTEMS[0];
+  const systemArmies  = armies.filter(a=>a.gameSystemId===resolvedSid);
+  const activeArmy    = systemArmies.find(a=>a.id===activeArmyId);
+  const scopeProjects = activeArmyId==="all" ? projects.filter(p=>systemArmies.some(a=>a.id===p.armyId)) : projects.filter(p=>p.armyId===activeArmyId);
+  const visibleProjects = scopeProjects.filter(p=>stageFilter==="All"||(p.stageCounts[stageFilter]||0)>0);
+  const grandTotal    = projects.reduce((s,p)=>s+totalModels(p),0);
+  const grandDone     = projects.reduce((s,p)=>s+doneModels(p),0);
+  const scopeModels   = scopeProjects.reduce((s,p)=>s+totalModels(p),0);
+  const scopeDone     = scopeProjects.reduce((s,p)=>s+doneModels(p),0);
+
+  // ── Handlers ──
+  const saveArmy = (form) => {
+    let newArmies, newNaid = nextArmyId;
+    if (form.id) { newArmies = armies.map(a=>a.id===form.id?form:a); }
+    else { form = {...form, id:nextArmyId}; newArmies=[...armies,form]; newNaid=nextArmyId+1; setNextArmyId(newNaid); setActiveArmyId(form.id); }
+    setArmies(newArmies);
+    scheduleSave(newArmies, projects, getSettings({nextArmyId:newNaid}));
+    setArmyModal(null);
+  };
+
+  const deleteArmy = (id) => {
+    if (!confirm("Delete this army and all its units?")) return;
+    const newArmies   = armies.filter(a=>a.id!==id);
+    const newProjects = projects.filter(p=>p.armyId!==id);
+    setArmies(newArmies); setProjects(newProjects); setActiveArmyId("all");
+    scheduleSave(newArmies, newProjects, getSettings());
+  };
+
+  const saveProject = (form) => {
+    let newProjects, newNpid = nextProjectId;
+    if (form.id) { newProjects = projects.map(p=>p.id===form.id?form:p); }
+    else { form={...form,id:nextProjectId}; newProjects=[...projects,form]; newNpid=nextProjectId+1; setNextProjectId(newNpid); }
+    setProjects(newProjects);
+    scheduleSave(armies, newProjects, getSettings({nextProjectId:newNpid}));
+    setProjectModal(null);
+  };
+
+  const deleteProject = (id) => {
+    if (!confirm("Remove this unit?")) return;
+    const newProjects = projects.filter(p=>p.id!==id);
+    setProjects(newProjects);
+    scheduleSave(armies, newProjects, getSettings());
+  };
+
+  const updateCounts = (id, stageCounts) => {
+    const newProjects = projects.map(p=>p.id===id?{...p,stageCounts}:p);
+    setProjects(newProjects);
+    scheduleSave(armies, newProjects, getSettings());
+  };
+
+  const toggleSystem = (id) => {
+    const on = enabledSystems.includes(id);
+    if (on && enabledSystems.length===1) return;
+    const next = on ? enabledSystems.filter(s=>s!==id) : [...enabledSystems,id];
+    const ordered = GAME_SYSTEMS.map(g=>g.id).filter(gid=>next.includes(gid));
+    const newSid = ordered.includes(resolvedSid) ? resolvedSid : ordered[0];
+    setEnabledSystems(ordered); setActiveSystemId(newSid); setSystemPickerOpen(false);
+    scheduleSave(armies, projects, getSettings({enabledSystems:ordered, activeSystemId:newSid}));
+  };
+
+  const switchSystem = (id) => {
+    setActiveSystemId(id); setActiveArmyId("all"); setStageFilter("All");
+    scheduleSave(armies, projects, getSettings({activeSystemId:id}));
+  };
+
+  if (!isConfigured) return <SetupScreen/>;
+
+  if (status==="loading") return (
+    <div style={{ minHeight:"100vh", background:"#0e0e0e", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"12px", color:"#444", fontFamily:"monospace", fontSize:"13px" }}>
+      <div style={{ fontFamily:"'Cinzel',serif", color:"#c8b870", fontSize:"18px" }}>⚔ Minis Tracker</div>
+      <div>Loading from Google Sheets…</div>
+    </div>
+  );
+
+  if (status==="error") return (
+    <div style={{ minHeight:"100vh", background:"#0e0e0e", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"12px", color:"#9a4a4a", fontFamily:"monospace", fontSize:"12px", padding:"20px", textAlign:"center" }}>
+      <div style={{ fontSize:"18px" }}>⚠</div>
+      <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif" }}>Couldn't connect to Google Sheets</div>
+      <div style={{ color:"#666", maxWidth:"400px" }}>{errorMsg}</div>
+      <div style={{ color:"#555", marginTop:"8px" }}>Check that your SHEET_ID and API_KEY are correct, the Sheets API is enabled, and your sheet is shared with "Anyone with the link".</div>
+      <button onClick={()=>location.reload()} style={{ marginTop:"12px", background:"#1a1a2e", border:"1px solid #4a4a7a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Retry</button>
+    </div>
+  );
+
+  return (
+    <div onClick={()=>systemPickerOpen&&setSystemPickerOpen(false)} style={{ minHeight:"100vh", background:"#0e0e0e", color:"#e8e0d0", fontFamily:"'Segoe UI',sans-serif" }}>
+
+      {/* ── Top bar ── */}
+      <div style={{ background:"#080808", borderBottom:"1px solid #1a1a1a" }}>
+        <div style={{ maxWidth:"820px", margin:"0 auto", padding:"14px 20px 0" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px" }}>
+            <div style={{ display:"flex", alignItems:"baseline", gap:"10px" }}>
+              <span style={{ fontSize:"20px", fontFamily:"'Cinzel',serif", fontWeight:"700", letterSpacing:"0.08em", color:"#c8b870" }}>⚔ MINIS</span>
+              <span style={{ color:"#3a3a3a", fontSize:"12px", fontFamily:"monospace" }}>
+                {grandTotal} models · {grandDone} done
+                {status==="saving" && <span style={{ color:"#3a5a3a", marginLeft:"8px" }}>saving…</span>}
+              </span>
+            </div>
+          </div>
+          {/* System tabs */}
+          <div style={{ display:"flex", overflowX:"auto", gap:"2px", alignItems:"flex-end" }}>
+            {activeEnabled.map(sid => {
+              const gs = GAME_SYSTEMS.find(g=>g.id===sid); if(!gs) return null;
+              const isActive = gs.id===resolvedSid;
+              const mc = projects.filter(p=>armies.find(a=>a.id===p.armyId&&a.gameSystemId===gs.id)).reduce((s,p)=>s+totalModels(p),0);
+              return (
+                <button key={gs.id} onClick={()=>switchSystem(gs.id)} style={{ background:isActive?"#111":"none", border:"none", borderTop:isActive?`2px solid ${gs.color}`:"2px solid transparent", borderBottom:isActive?"1px solid #111":"1px solid transparent", color:isActive?gs.color:"#444", padding:"8px 18px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", letterSpacing:"0.04em", whiteSpace:"nowrap", marginBottom:"-1px", zIndex:1, position:"relative", display:"flex", alignItems:"center", gap:"6px" }}>
+                  <span>{gs.icon}</span>{gs.name}
+                  {mc>0&&<span style={{ fontSize:"10px", opacity:0.5, fontFamily:"monospace", fontWeight:"400" }}>{mc}</span>}
+                </button>
+              );
+            })}
+            <div style={{ position:"relative", marginLeft:"auto", paddingBottom:"2px" }}>
+              <button onClick={e=>{e.stopPropagation();setSystemPickerOpen(o=>!o);}} style={{ background:systemPickerOpen?"#1e1e2e":"none", border:`1px solid ${systemPickerOpen?"#4a4a7a":"#2a2a2a"}`, color:"#555", borderRadius:"4px", padding:"4px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px" }}>⚙ Systems</button>
+              {systemPickerOpen&&(
+                <div onClick={e=>e.stopPropagation()} style={{ position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:50, background:"#161616", border:"1px solid #2a2a3a", borderRadius:"6px", padding:"8px", display:"flex", flexDirection:"column", gap:"4px", minWidth:"200px", boxShadow:"0 4px 20px rgba(0,0,0,0.6)" }}>
+                  <div style={{ color:"#555", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.08em", padding:"2px 6px 6px" }}>Toggle game systems</div>
+                  {GAME_SYSTEMS.map(gs=>{
+                    const on=activeEnabled.includes(gs.id), cant=on&&activeEnabled.length===1;
+                    return <button key={gs.id} onClick={()=>!cant&&toggleSystem(gs.id)} style={{ display:"flex", alignItems:"center", gap:"10px", background:on?"#1e1e2e":"none", border:`1px solid ${on?gs.color+"55":"#222"}`, borderRadius:"4px", padding:"7px 10px", cursor:cant?"default":"pointer", opacity:cant?0.4:1 }}>
+                      <span style={{ fontSize:"14px" }}>{gs.icon}</span>
+                      <span style={{ color:on?gs.color:"#555", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", flex:1, textAlign:"left" }}>{gs.name}</span>
+                      <span style={{ color:on?"#5a9a5a":"#3a3a3a", fontSize:"11px", fontFamily:"monospace" }}>{on?"ON":"OFF"}</span>
+                    </button>;
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Army tabs ── */}
+      <div style={{ background:"#0d0d0d", borderBottom:"1px solid #1e1e1e" }}>
+        <div style={{ maxWidth:"820px", margin:"0 auto", padding:"0 20px", display:"flex", alignItems:"center" }}>
+          <div style={{ display:"flex", overflowX:"auto", flex:1 }}>
+            <button onClick={()=>{setActiveArmyId("all");setStageFilter("All");}} style={{ background:activeArmyId==="all"?"#161616":"none", border:"none", borderTop:activeArmyId==="all"?`2px solid ${activeSystem?.color||"#888"}88`:"2px solid transparent", borderBottom:activeArmyId==="all"?"1px solid #161616":"1px solid transparent", color:activeArmyId==="all"?"#aaa":"#444", padding:"7px 14px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.05em", whiteSpace:"nowrap", marginBottom:"-1px", zIndex:1, position:"relative" }}>All</button>
+            {systemArmies.map(army=>{
+              const isActive=activeArmyId===army.id, cnt=projects.filter(p=>p.armyId===army.id).length;
+              return <button key={army.id} onClick={()=>{setActiveArmyId(army.id);setStageFilter("All");}} style={{ background:isActive?"#161616":"none", border:"none", borderTop:isActive?`2px solid ${army.color}`:"2px solid transparent", borderBottom:isActive?"1px solid #161616":"1px solid transparent", color:isActive?army.color:"#444", padding:"7px 14px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em", whiteSpace:"nowrap", marginBottom:"-1px", zIndex:1, position:"relative", display:"flex", alignItems:"center", gap:"5px" }}>
+                <span style={{ width:"5px", height:"5px", borderRadius:"50%", background:army.color, flexShrink:0 }}/>{army.name}
+                <span style={{ fontSize:"10px", opacity:0.5, fontFamily:"monospace", fontWeight:"400" }}>{cnt}</span>
+              </button>;
+            })}
+          </div>
+          <button onClick={()=>setArmyModal("new")} style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"4px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px", marginLeft:"8px", flexShrink:0 }}>+ Army</button>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
+        {activeArmy&&(
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px", padding:"10px 14px", background:"#111", border:`1px solid ${activeArmy.color}22`, borderRadius:"6px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+              <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:activeArmy.color }}/>
+              <span style={{ fontFamily:"'Cinzel',serif", color:activeArmy.color, fontSize:"13px", fontWeight:"600" }}>{activeArmy.name}</span>
+              <span style={{ color:"#444", fontSize:"12px", fontFamily:"monospace" }}>{scopeModels} models · {scopeDone} done</span>
+            </div>
+            <div style={{ display:"flex", gap:"6px" }}>
+              <button onClick={()=>setArmyModal(activeArmy)} style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Edit</button>
+              <button onClick={()=>deleteArmy(activeArmy.id)} style={{ background:"none", border:"1px solid #3a2020", color:"#6a4040", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Delete</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display:"flex", gap:"8px", alignItems:"center", marginBottom:"14px", flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:"4px", flexWrap:"wrap", flex:1 }}>
+            {["All",...STAGES].map(s=>(
+              <button key={s} onClick={()=>setStageFilter(s)} style={{ background:stageFilter===s?"#1e1e2e":"none", border:`1px solid ${stageFilter===s?"#4a4a7a":"#222"}`, color:stageFilter===s?"#9999cc":"#444", borderRadius:"3px", padding:"4px 10px", cursor:"pointer", fontSize:"11px", fontFamily:"monospace", letterSpacing:"0.04em", textTransform:"uppercase" }}>{s}</button>
+            ))}
+          </div>
+          <button onClick={()=>setProjectModal("new")} disabled={systemArmies.length===0} style={{ background:systemArmies.length?"#1a1a2e":"#111", border:`1px solid ${systemArmies.length?"#5a5a9a":"#2a2a2a"}`, color:systemArmies.length?"#aaaadd":"#333", borderRadius:"4px", padding:"6px 14px", cursor:systemArmies.length?"pointer":"not-allowed", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", letterSpacing:"0.06em", whiteSpace:"nowrap" }}>+ Add Unit</button>
+        </div>
+
+        {scopeProjects.length>0&&(()=>{
+          const gt=scopeProjects.reduce((s,p)=>s+totalModels(p),0); if(!gt)return null;
+          return <div style={{ background:"#111", border:"1px solid #1a1a1a", borderRadius:"6px", padding:"10px 14px", marginBottom:"14px", display:"flex", gap:"3px" }}>
+            {STAGES.map(s=>{ const cnt=scopeProjects.reduce((sum,p)=>sum+(p.stageCounts[s]||0),0); if(!cnt)return null;
+              return <div key={s} title={`${s}: ${cnt}`} style={{ flex:cnt/gt*100, height:"6px", background:STAGE_COLORS[s].border, borderRadius:"3px", minWidth:"4px", transition:"flex 0.3s" }}/>;
+            })}
+          </div>;
+        })()}
+
+        {systemArmies.length===0 ? (
+          <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>No armies yet for {activeSystem?.name}. Hit <span style={{ color:"#555" }}>+ Army</span> to add one.</div>
+        ) : visibleProjects.length===0 ? (
+          <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>{stageFilter==="All"?"No units here yet. Add one above.":`No units at the ${stageFilter} stage.`}</div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+            {visibleProjects.map(p=><ProjectCard key={p.id} project={p} onEdit={setProjectModal} onDelete={deleteProject} onUpdateCounts={updateCounts}/>)}
+          </div>
+        )}
+      </div>
+
+      {projectModal&&<ProjectModal project={projectModal==="new"?null:projectModal} armies={systemArmies} defaultArmyId={activeArmyId!=="all"?activeArmyId:systemArmies[0]?.id} onSave={saveProject} onClose={()=>setProjectModal(null)}/>}
+      {armyModal&&<ArmyModal army={armyModal==="new"?null:armyModal} gameSystemId={resolvedSid} factions={GAME_SYSTEMS.find(g=>g.id===resolvedSid)?.factions||[]} onSave={saveArmy} onClose={()=>setArmyModal(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
