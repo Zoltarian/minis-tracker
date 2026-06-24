@@ -149,7 +149,7 @@ function unitToRow(p) { return [String(p.id), String(p.armyId), p.name, p.notes|
 
 // ── Components ────────────────────────────────────────────────
 
-function ProjectCard({ project, onEdit, onDelete, onUpdateCounts }) {
+function ProjectCard({ project, onEdit, onDelete, onUpdateCounts, onDragStart, onDragOver, onDrop, isDragOver }) {
   const total = totalModels(project), done = doneModels(project);
   const move = (stage, delta) => {
     const cur = project.stageCounts[stage] || 0;
@@ -157,14 +157,23 @@ function ProjectCard({ project, onEdit, onDelete, onUpdateCounts }) {
     onUpdateCounts(project.id, { ...project.stageCounts, [stage]: cur + delta });
   };
   return (
-    <div style={{ background:"#121212", border:"1px solid #2a2a2a", borderRadius:"6px", overflow:"hidden" }}>
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={e=>{e.preventDefault();onDragOver();}}
+      onDrop={onDrop}
+      style={{ background:"#121212", border:`1px solid ${isDragOver?"#5a5a9a":"#2a2a2a"}`, borderRadius:"6px", overflow:"hidden", opacity:1, transition:"border-color 0.15s", cursor:"grab" }}
+    >
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px 8px" }}>
-        <div>
-          <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", letterSpacing:"0.02em" }}>{project.name}</div>
-          <div style={{ color:"#555", fontSize:"11px", marginTop:"2px", fontFamily:"monospace" }}>
-            {total} {total===1?"model":"models"}
-            {done>0 && <span style={{ color:"#5a7a2a", marginLeft:"6px" }}>· {done} done</span>}
-            {project.notes && <span style={{ color:"#444", marginLeft:"6px", fontStyle:"italic" }}>· {project.notes}</span>}
+        <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+          <span style={{ color:"#333", fontSize:"14px", cursor:"grab", userSelect:"none", flexShrink:0 }} title="Drag to reorder">⠿</span>
+          <div>
+            <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", letterSpacing:"0.02em" }}>{project.name}</div>
+            <div style={{ color:"#555", fontSize:"11px", marginTop:"2px", fontFamily:"monospace" }}>
+              {total} {total===1?"model":"models"}
+              {done>0 && <span style={{ color:"#5a7a2a", marginLeft:"6px" }}>· {done} done</span>}
+              {project.notes && <span style={{ color:"#444", marginLeft:"6px", fontStyle:"italic" }}>· {project.notes}</span>}
+            </div>
           </div>
         </div>
         <div style={{ display:"flex", gap:"5px" }}>
@@ -331,6 +340,8 @@ function App() {
   const [nextArmyId,      setNextArmyId]      = useState(1);
   const [nextProjectId,   setNextProjectId]   = useState(1);
   const [status,          setStatus]          = useState("loading"); // loading | ready | error | saving
+  const [dragId,          setDragId]          = useState(null);
+  const [dragOverId,      setDragOverId]      = useState(null);
   const [errorMsg,        setErrorMsg]        = useState("");
   const saveTimer = useRef(null);
 
@@ -438,6 +449,18 @@ function App() {
     const newProjects = projects.map(p=>p.id===id?{...p,stageCounts}:p);
     setProjects(newProjects);
     scheduleSave(armies, newProjects, getSettings());
+  };
+
+  const reorderProjects = (fromId, toId) => {
+    if (fromId === toId) return;
+    const arr = [...projects];
+    const fromIdx = arr.findIndex(p => p.id === fromId);
+    const toIdx   = arr.findIndex(p => p.id === toId);
+    const [moved] = arr.splice(fromIdx, 1);
+    arr.splice(toIdx, 0, moved);
+    setProjects(arr);
+    scheduleSave(armies, arr, getSettings());
+    setDragId(null); setDragOverId(null);
   };
 
   const toggleSystem = (id) => {
@@ -579,7 +602,19 @@ function App() {
           <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>{stageFilter==="All"?"No units here yet. Add one above.":`No units at the ${stageFilter} stage.`}</div>
         ) : (
           <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-            {visibleProjects.map(p=><ProjectCard key={p.id} project={p} onEdit={setProjectModal} onDelete={deleteProject} onUpdateCounts={updateCounts}/>)}
+            {visibleProjects.map(p=>(
+              <ProjectCard
+                key={p.id}
+                project={p}
+                onEdit={setProjectModal}
+                onDelete={deleteProject}
+                onUpdateCounts={updateCounts}
+                isDragOver={dragOverId===p.id}
+                onDragStart={()=>setDragId(p.id)}
+                onDragOver={()=>setDragOverId(p.id)}
+                onDrop={()=>reorderProjects(dragId, p.id)}
+              />
+            ))}
           </div>
         )}
       </div>
