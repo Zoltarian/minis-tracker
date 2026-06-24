@@ -602,19 +602,44 @@ function App() {
 
       {/* ── Body ── */}
       <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
-        {activeArmy&&(
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px", padding:"10px 14px", background:"#111", border:`1px solid ${activeArmy.color}22`, borderRadius:"6px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-              <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:activeArmy.color }}/>
-              <span style={{ fontFamily:"'Cinzel',serif", color:activeArmy.color, fontSize:"13px", fontWeight:"600" }}>{activeArmy.name}</span>
-              <span style={{ color:"#444", fontSize:"12px", fontFamily:"monospace" }}>{scopeModels} models · {scopeDone} done</span>
+        {/* Stage pills component — reused for army and system views */}
+        {(()=>{
+          const srcProjects = activeArmy ? scopeProjects : projects.filter(p=>systemArmies.some(a=>a.id===p.armyId));
+          const total = srcProjects.reduce((s,p)=>s+totalModels(p),0);
+          if (!total && !activeArmy) return null;
+          const accentColor = activeArmy ? activeArmy.color : activeSystem?.color || "#c8b870";
+          const label = activeArmy ? activeArmy.name : activeSystem?.name;
+          return (
+            <div style={{ marginBottom:"14px", background:"#111", border:`1px solid ${accentColor}22`, borderRadius:"6px", padding:"12px 14px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                  {activeArmy && <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:activeArmy.color, flexShrink:0 }}/>}
+                  <span style={{ fontFamily:"'Cinzel',serif", color:accentColor, fontSize:"13px", fontWeight:"600" }}>{label}</span>
+                  <span style={{ color:"#3a3a3a", fontSize:"11px", fontFamily:"monospace" }}>{total} total</span>
+                </div>
+                {activeArmy && (
+                  <div style={{ display:"flex", gap:"6px" }}>
+                    <button onClick={()=>setArmyModal(activeArmy)} style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Edit</button>
+                    <button onClick={()=>deleteArmy(activeArmy.id)} style={{ background:"none", border:"1px solid #3a2020", color:"#6a4040", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Delete</button>
+                  </div>
+                )}
+              </div>
+              <div style={{ display:"flex", gap:"5px", flexWrap:"wrap" }}>
+                {STAGES.map(s => {
+                  const cnt = srcProjects.reduce((sum,p)=>sum+(p.stageCounts[s]||0),0);
+                  if (!cnt) return null;
+                  const sc = STAGE_COLORS[s];
+                  return (
+                    <div key={s} style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px" }}>
+                      <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
+                      <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{ display:"flex", gap:"6px" }}>
-              <button onClick={()=>setArmyModal(activeArmy)} style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Edit</button>
-              <button onClick={()=>deleteArmy(activeArmy.id)} style={{ background:"none", border:"1px solid #3a2020", color:"#6a4040", borderRadius:"4px", padding:"3px 8px", cursor:"pointer", fontSize:"11px" }}>Delete</button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div style={{ display:"flex", gap:"8px", alignItems:"center", marginBottom:"14px", flexWrap:"wrap" }}>
           <div style={{ display:"flex", gap:"4px", flexWrap:"wrap", flex:1 }}>
@@ -625,14 +650,7 @@ function App() {
           <button onClick={()=>setProjectModal("new")} disabled={systemArmies.length===0} style={{ background:systemArmies.length?"#1a1a2e":"#111", border:`1px solid ${systemArmies.length?"#5a5a9a":"#2a2a2a"}`, color:systemArmies.length?"#aaaadd":"#333", borderRadius:"4px", padding:"6px 14px", cursor:systemArmies.length?"pointer":"not-allowed", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", letterSpacing:"0.06em", whiteSpace:"nowrap" }}>+ Add Unit</button>
         </div>
 
-        {scopeProjects.length>0&&(()=>{
-          const gt=scopeProjects.reduce((s,p)=>s+totalModels(p),0); if(!gt)return null;
-          return <div style={{ background:"#111", border:"1px solid #1a1a1a", borderRadius:"6px", padding:"10px 14px", marginBottom:"14px", display:"flex", gap:"3px" }}>
-            {STAGES.map(s=>{ const cnt=scopeProjects.reduce((sum,p)=>sum+(p.stageCounts[s]||0),0); if(!cnt)return null;
-              return <div key={s} title={`${s}: ${cnt}`} style={{ flex:cnt/gt*100, height:"6px", background:STAGE_COLORS[s].border, borderRadius:"3px", minWidth:"4px", transition:"flex 0.3s" }}/>;
-            })}
-          </div>;
-        })()}
+
 
         {systemArmies.length===0 ? (
           <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>No armies yet for {activeSystem?.name}. Hit <span style={{ color:"#555" }}>+ Army</span> to add one.</div>
