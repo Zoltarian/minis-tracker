@@ -518,13 +518,27 @@ function App() {
       {/* ── Top bar ── */}
       <div style={{ background:"#080808", borderBottom:"1px solid #1a1a1a" }}>
         <div style={{ maxWidth:"820px", margin:"0 auto", padding:"14px 20px 0" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px" }}>
-            <div style={{ display:"flex", alignItems:"baseline", gap:"10px" }}>
+          <div style={{ marginBottom:"14px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"10px" }}>
               <span style={{ fontSize:"20px", fontFamily:"'Cinzel',serif", fontWeight:"700", letterSpacing:"0.08em", color:"#c8b870" }}>⚔ MINIS</span>
-              <span style={{ color:"#3a3a3a", fontSize:"12px", fontFamily:"monospace" }}>
-                {grandTotal} models · {grandDone} done
-                {status==="saving" && <span style={{ color:"#3a5a3a", marginLeft:"8px" }}>saving…</span>}
-              </span>
+              {status==="saving" && <span style={{ color:"#3a5a3a", fontSize:"11px", fontFamily:"monospace" }}>saving…</span>}
+            </div>
+            <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+              {STAGES.map(s => {
+                const cnt = projects.reduce((sum, p) => sum + (p.stageCounts[s] || 0), 0);
+                if (!cnt) return null;
+                const sc = STAGE_COLORS[s];
+                return (
+                  <div key={s} style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px" }}>
+                    <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
+                    <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
+                  </div>
+                );
+              })}
+              <div style={{ background:"#1a1a1a", border:"1px solid #2a2a2a", borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px" }}>
+                <span style={{ color:"#444", fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>Total</span>
+                <span style={{ color:"#888", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{grandTotal}</span>
+              </div>
             </div>
           </div>
           {/* System tabs */}
