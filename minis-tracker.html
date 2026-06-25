@@ -50,7 +50,8 @@ const STAGE_SHORT = { "Unbuilt":"Unblt","Built":"Built","Primed":"Prmd","Paintin
 
 const GAME_SYSTEMS = [
   { id:"40k", name:"Warhammer 40K", color:"#9a3a2a", icon:"☠", factions:[
-    "Space Marines","Astra Militarum","Adeptus Custodes","Adepta Sororitas","Adeptus Mechanicus","Imperial Knights","Imperial Agents",
+    "Space Marines","Ultramarines","Blood Angels","Dark Angels","Space Wolves","Black Templars","Grey Knights","Deathwatch",
+    "Astra Militarum","Adeptus Custodes","Adepta Sororitas","Adeptus Mechanicus","Imperial Knights","Imperial Agents",
     "Chaos Space Marines","Death Guard","Thousand Sons","World Eaters","Chaos Daemons","Chaos Knights",
     "Aeldari","Drukhari","Tyranids","Orks","Necrons","T'au Empire","Genestealer Cults","Leagues of Votann",
   ]},
@@ -90,12 +91,26 @@ const doneModels  = p => p.stageCounts["Painted & Based"] || 0;
 // settings: stored in a "settings" tab as key|value rows
 
 // ── Sheet helpers ─
+async function fetchWithRetry(url, retries=3, delayMs=1500) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch(e) {
+      if (i < retries - 1) {
+        await new Promise(res => setTimeout(res, delayMs * (i + 1)));
+      } else {
+        throw e;
+      }
+    }
+  }
+}
+
 async function readAll() {
-  const r = await fetch(SCRIPT_URL + "?action=read");
-  if (!r.ok) throw new Error(await r.text());
-  const data = await r.json();
-  if (data.error) throw new Error(data.error);
-  return data;
+  return fetchWithRetry(SCRIPT_URL + "?action=read");
 }
 
 async function saveAll(armies, units, settings) {
@@ -105,11 +120,7 @@ async function saveAll(armies, units, settings) {
     units:    JSON.stringify(units),
     settings: JSON.stringify(settings),
   });
-  const r = await fetch(SCRIPT_URL + "?" + params.toString());
-  if (!r.ok) throw new Error(await r.text());
-  const data = await r.json();
-  if (data.error) throw new Error(data.error);
-  return data;
+  return fetchWithRetry(SCRIPT_URL + "?" + params.toString());
 }
 
 function parseArmies(data) {
@@ -366,40 +377,43 @@ function App() {
   const [armyDragId,      setArmyDragId]      = useState(null);
   const [armyDragOverId,  setArmyDragOverId]  = useState(null);
   const [errorMsg,        setErrorMsg]        = useState("");
+  const [saveError,       setSaveError]       = useState(false);
   const saveTimer = useRef(null);
 
   const isConfigured = SCRIPT_URL !== "YOUR_SCRIPT_URL_HERE";
 
   // ── Load from Sheets ──
-  useEffect(() => {
-    if (!isConfigured) return;
-    (async () => {
-      try {
-        const { armies: armyRows, units: unitRows, settings: settingRows } = await readAll();
-        const loadedArmies   = parseArmies({ values: armyRows });
-        const loadedProjects = parseUnits({ values: unitRows });
-        const settings       = parseSettings({ values: settingRows });
-        setArmies(loadedArmies);
-        setProjects(loadedProjects);
-        const maxAid = loadedArmies.reduce((m,a)=>Math.max(m,a.id),0);
-        const maxPid = loadedProjects.reduce((m,p)=>Math.max(m,p.id),0);
-        setNextArmyId(maxAid+1);
-        setNextProjectId(maxPid+1);
-        const es = settings.enabledSystems ? JSON.parse(settings.enabledSystems) : GAME_SYSTEMS.map(g=>g.id);
-        setEnabledSystems(es);
-        setActiveSystemId(settings.activeSystemId || es[0] || "40k");
-        setStatus("ready");
-      } catch(e) {
-        setErrorMsg(e.message);
-        setStatus("error");
-      }
-    })();
+  const loadData = useCallback(async () => {
+    setStatus("loading");
+    setErrorMsg("");
+    try {
+      const { armies: armyRows, units: unitRows, settings: settingRows } = await readAll();
+      const loadedArmies   = parseArmies({ values: armyRows });
+      const loadedProjects = parseUnits({ values: unitRows });
+      const settings       = parseSettings({ values: settingRows });
+      setArmies(loadedArmies);
+      setProjects(loadedProjects);
+      const maxAid = loadedArmies.reduce((m,a)=>Math.max(m,a.id),0);
+      const maxPid = loadedProjects.reduce((m,p)=>Math.max(m,p.id),0);
+      setNextArmyId(maxAid+1);
+      setNextProjectId(maxPid+1);
+      const es = settings.enabledSystems ? JSON.parse(settings.enabledSystems) : GAME_SYSTEMS.map(g=>g.id);
+      setEnabledSystems(es);
+      setActiveSystemId(settings.activeSystemId || es[0] || "40k");
+      setStatus("ready");
+    } catch(e) {
+      setErrorMsg(e.message);
+      setStatus("error");
+    }
   }, []);
+
+  useEffect(() => { if (isConfigured) loadData(); }, []);
 
   // ── Debounced save ──
   const scheduleSave = useCallback((newArmies, newProjects, newSettings) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setStatus("saving");
+    setSaveError(false);
     saveTimer.current = setTimeout(async () => {
       try {
         const armyRows     = [["id","gameSystemId","faction","customName","name","color"], ...newArmies.map(armyToRow)];
@@ -407,8 +421,10 @@ function App() {
         const settingsRows = [["key","value"], ...Object.entries(newSettings).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
         await saveAll(armyRows, unitRows, settingsRows);
         setStatus("ready");
+        setSaveError(false);
       } catch(e) {
-        setStatus("error");
+        setStatus("ready"); // don't kill the whole app for a save failure
+        setSaveError(true);
         setErrorMsg(e.message);
       }
     }, 1200);
@@ -526,8 +542,7 @@ function App() {
       <div style={{ fontSize:"18px" }}>⚠</div>
       <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif" }}>Couldn't connect to Google Sheets</div>
       <div style={{ color:"#666", maxWidth:"400px" }}>{errorMsg}</div>
-      <div style={{ color:"#555", marginTop:"8px" }}>Check that your SHEET_ID and API_KEY are correct, the Sheets API is enabled, and your sheet is shared with "Anyone with the link".</div>
-      <button onClick={()=>location.reload()} style={{ marginTop:"12px", background:"#1a1a2e", border:"1px solid #4a4a7a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Retry</button>
+      <button onClick={loadData} style={{ marginTop:"12px", background:"#1a1a2e", border:"1px solid #4a4a7a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Retry</button>
     </div>
   );
 
@@ -541,6 +556,12 @@ function App() {
             <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"10px" }}>
               <span style={{ fontSize:"20px", fontFamily:"'Cinzel',serif", fontWeight:"700", letterSpacing:"0.08em", color:"#c8b870" }}>⚔ MINIS</span>
               {status==="saving" && <span style={{ color:"#3a5a3a", fontSize:"11px", fontFamily:"monospace" }}>saving…</span>}
+              {saveError && (
+                <span style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                  <span style={{ color:"#8a3a3a", fontSize:"11px", fontFamily:"monospace" }}>⚠ save failed</span>
+                  <button onClick={()=>loadData()} style={{ background:"none", border:"1px solid #5a3a3a", color:"#9a5a5a", borderRadius:"3px", padding:"2px 7px", cursor:"pointer", fontFamily:"monospace", fontSize:"10px" }}>reconnect</button>
+                </span>
+              )}
             </div>
             <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
               {STAGES.map(s => {
