@@ -49,22 +49,30 @@ const STAGE_COLORS = {
 const STAGE_SHORT = { "Unbuilt":"Unblt","Built":"Built","Primed":"Prmd","Painting":"WIP","Painted":"Pntd","Painted & Based":"Done" };
 
 const GAME_SYSTEMS = [
-  { id:"40k", name:"Warhammer 40K", color:"#9a3a2a", icon:"☠", factions:[
-    "Space Marines","Ultramarines","Blood Angels","Dark Angels","Space Wolves","Black Templars","Grey Knights","Deathwatch",
-    "Astra Militarum","Adeptus Custodes","Adepta Sororitas","Adeptus Mechanicus","Imperial Knights","Imperial Agents",
-    "Chaos Space Marines","Death Guard","Thousand Sons","World Eaters","Chaos Daemons","Chaos Knights",
-    "Aeldari","Drukhari","Tyranids","Orks","Necrons","T'au Empire","Genestealer Cults","Leagues of Votann",
+  { id:"40k", name:"Warhammer 40K", color:"#9a3a2a", icon:"☠",
+    categories:["Characters","Infantry","Vehicles","Artillery","Other"],
+    factions:[
+      "Space Marines","Ultramarines","Blood Angels","Dark Angels","Space Wolves","Black Templars","Grey Knights","Deathwatch",
+      "Astra Militarum","Adeptus Custodes","Adepta Sororitas","Adeptus Mechanicus","Imperial Knights","Imperial Agents",
+      "Chaos Space Marines","Death Guard","Thousand Sons","World Eaters","Chaos Daemons","Chaos Knights",
+      "Aeldari","Drukhari","Tyranids","Orks","Necrons","T'au Empire","Genestealer Cults","Leagues of Votann",
   ]},
-  { id:"aos", name:"Age of Sigmar", color:"#8a7a2a", icon:"⚡", factions:[
-    "Stormcast Eternals","Cities of Sigmar","Daughters of Khaine","Fyreslayers","Idoneth Deepkin","Kharadron Overlords","Lumineth Realm-Lords","Seraphon","Sylvaneth",
-    "Blades of Khorne","Disciples of Tzeentch","Maggotkin of Nurgle","Hedonites of Slaanesh","Skaven","Slaves to Darkness","Beasts of Chaos",
-    "Flesh-Eater Courts","Nighthaunt","Ossiarch Bonereapers","Soulblight Gravelords",
-    "Gloomspite Gitz","Ironjawz","Kruleboyz","Bonesplitterz","Ogor Mawtribes","Sons of Behemat",
+  { id:"aos", name:"Age of Sigmar", color:"#8a7a2a", icon:"⚡",
+    categories:["Characters","Infantry","Cavalry","Monster","Siege Weapon"],
+    factions:[
+      "Stormcast Eternals","Cities of Sigmar","Daughters of Khaine","Fyreslayers","Idoneth Deepkin","Kharadron Overlords","Lumineth Realm-Lords","Seraphon","Sylvaneth",
+      "Blades of Khorne","Disciples of Tzeentch","Maggotkin of Nurgle","Hedonites of Slaanesh","Skaven","Slaves to Darkness","Beasts of Chaos",
+      "Flesh-Eater Courts","Nighthaunt","Ossiarch Bonereapers","Soulblight Gravelords",
+      "Gloomspite Gitz","Ironjawz","Kruleboyz","Bonesplitterz","Ogor Mawtribes","Sons of Behemat",
   ]},
-  { id:"sc",  name:"StarCraft",        color:"#2a6a9a", icon:"★", factions:["Terran","Zerg","Protoss"] },
-  { id:"whf", name:"Warhammer Fantasy",color:"#4a7a3a", icon:"🐉", factions:[
-    "The Empire","Bretonnia","Kislev","Dwarfs","High Elves","Wood Elves","Dark Elves","Lizardmen","Skaven",
-    "Orcs & Goblins","Ogre Kingdoms","Tomb Kings","Vampire Counts","Warriors of Chaos","Daemons of Chaos","Beastmen","Chaos Dwarfs","Grand Cathay",
+  { id:"sc",  name:"StarCraft", color:"#2a6a9a", icon:"★",
+    categories:["Characters","Infantry","Vehicles"],
+    factions:["Terran","Zerg","Protoss"] },
+  { id:"whf", name:"Warhammer Fantasy", color:"#4a7a3a", icon:"🐉",
+    categories:["Characters","Infantry","Cavalry","Monster","Siege Weapon"],
+    factions:[
+      "The Empire","Bretonnia","Kislev","Dwarfs","High Elves","Wood Elves","Dark Elves","Lizardmen","Skaven",
+      "Orcs & Goblins","Ogre Kingdoms","Tomb Kings","Vampire Counts","Warriors of Chaos","Daemons of Chaos","Beastmen","Chaos Dwarfs","Grand Cathay",
   ]},
 ];
 
@@ -168,6 +176,7 @@ function parseUnits(data) {
       "Painted & Based":parseInt(r[17]) || 0,
     },
     squadSize: parseInt(r[18]) || 1,
+    category:  r[19] || "Other",
   }));
 }
 
@@ -179,7 +188,7 @@ function parseSettings(data) {
 }
 
 function armyToRow(a) { return [String(a.id), a.gameSystemId, a.faction, a.customName||"", a.name, a.color]; }
-function unitToRow(p) { const tsc = p.tokenStageCounts || {}; return [String(p.id), String(p.armyId), p.name, p.notes||"", ...STAGES.map(s => String(p.stageCounts[s]||0)), String(!!p.hasTokens), p.tokenName||"Token", ...STAGES.map(s => String(tsc[s]||0)), String(p.squadSize||1)]; }
+function unitToRow(p) { const tsc = p.tokenStageCounts || {}; return [String(p.id), String(p.armyId), p.name, p.notes||"", ...STAGES.map(s => String(p.stageCounts[s]||0)), String(!!p.hasTokens), p.tokenName||"Token", ...STAGES.map(s => String(tsc[s]||0)), String(p.squadSize||1), p.category||"Other"]; }
 
 // ── Components ────────────────────────────────────────────────
 
@@ -340,6 +349,7 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
     else setStageCounts(p=>({...p, Unbuilt:Math.max(0,(p.Unbuilt||0)+(n-currentTotal))}));
   };
   const [squadSize,         setSquadSize]         = useState(project?.squadSize || 1);
+  const [category,          setCategory]          = useState(project?.category || (armies[0] ? (GAME_SYSTEMS.find(g=>g.id===armies.find(a=>a.id===(project?.armyId||defaultArmyId||armies[0]?.id))?.gameSystemId)?.categories||["Other"])[0] : "Other"));
   const [hasTokens,         setHasTokens]         = useState(project?.hasTokens || false);
   const [tokenName,         setTokenName]         = useState(project?.tokenName || "");
   const [tokenStageCounts,  setTokenStageCounts]  = useState(project?.tokenStageCounts || Object.fromEntries(STAGES.map(s=>[s,0])));
@@ -399,6 +409,22 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
               <span style={{ color:"#555", fontSize:"11px", fontFamily:"monospace" }}>models per squad</span>
             </div>
           </div>
+          {/* Category */}
+          {(()=>{
+            const army = armies.find(a=>a.id===armyId);
+            const gs = army ? GAME_SYSTEMS.find(g=>g.id===army.gameSystemId) : null;
+            const cats = gs?.categories || ["Other"];
+            return (
+              <div>
+                <div style={lStyle}>Category</div>
+                <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                  {cats.map(c=>(
+                    <button key={c} onClick={()=>setCategory(c)} style={{ background:category===c?"#1e1e2e":"none", border:`1px solid ${category===c?"#5a5a9a":"#2a2a2a"}`, color:category===c?"#aaaadd":"#555", borderRadius:"4px", padding:"5px 12px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px", letterSpacing:"0.04em" }}>{c}</button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* Token section */}
           <div style={{ borderTop:"1px solid #222", paddingTop:"12px" }}>
             <label style={{ display:"flex", alignItems:"center", gap:"10px", cursor:"pointer" }}>
@@ -439,7 +465,7 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
         </div>
         <div style={{ display:"flex", gap:"8px", marginTop:"20px", justifyContent:"flex-end" }}>
           <button onClick={onClose} style={{ background:"none", border:"1px solid #333", color:"#666", borderRadius:"4px", padding:"8px 16px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Cancel</button>
-          <button onClick={()=>canSave&&onSave({...project, name:name.trim(), armyId, notes, stageCounts, squadSize, hasTokens, tokenName:tokenName.trim()||"Token", tokenStageCounts})} style={{ background:"#2a2a4a", border:"1px solid #5a5a9a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:canSave?"pointer":"default", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", opacity:canSave?1:0.4 }}>Save</button>
+          <button onClick={()=>canSave&&onSave({...project, name:name.trim(), armyId, notes, stageCounts, squadSize, category, hasTokens, tokenName:tokenName.trim()||"Token", tokenStageCounts})} style={{ background:"#2a2a4a", border:"1px solid #5a5a9a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:canSave?"pointer":"default", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600", opacity:canSave?1:0.4 }}>Save</button>
         </div>
       </div>
     </div>
@@ -583,6 +609,7 @@ function App() {
   const [status,          setStatus]          = useState("loading"); // loading | ready | error | saving
   const [dragId,          setDragId]          = useState(null);
   const [dragOverId,      setDragOverId]      = useState(null);
+  const [dragOverCategory,setDragOverCategory] = useState(null);
   const [armyDragId,      setArmyDragId]      = useState(null);
   const [armyDragOverId,  setArmyDragOverId]  = useState(null);
   const [errorMsg,        setErrorMsg]        = useState("");
@@ -626,7 +653,7 @@ function App() {
     saveTimer.current = setTimeout(async () => {
       try {
         const armyRows     = [["id","gameSystemId","faction","customName","name","color"], ...newArmies.map(armyToRow)];
-        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painting","Painted","Painted & Based","hasTokens","tokenName","t_Unbuilt","t_Built","t_Primed","t_Painting","t_Painted","t_PaintedBased","squadSize"], ...newProjects.map(unitToRow)];
+        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painting","Painted","Painted & Based","hasTokens","tokenName","t_Unbuilt","t_Built","t_Primed","t_Painting","t_Painted","t_PaintedBased","squadSize","category"], ...newProjects.map(unitToRow)];
         const settingsRows = [["key","value"], ...Object.entries(newSettings).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
         await saveAll(armyRows, unitRows, settingsRows);
         setStatus("ready");
@@ -709,6 +736,13 @@ function App() {
     setProjects(arr);
     scheduleSave(armies, arr, getSettings());
     setDragId(null); setDragOverId(null);
+  };
+
+  const assignCategory = (unitId, category) => {
+    const newProjects = projects.map(p => p.id===unitId ? {...p, category} : p);
+    setProjects(newProjects);
+    scheduleSave(armies, newProjects, getSettings());
+    setDragId(null); setDragOverId(null); setDragOverCategory(null);
   };
 
   const reorderArmies = (fromId, toId) => {
@@ -911,23 +945,52 @@ function App() {
           <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>No armies yet for {activeSystem?.name}. Hit <span style={{ color:"#555" }}>+ Army</span> to add one.</div>
         ) : visibleProjects.length===0 ? (
           <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>{stageFilter==="All"?"No units here yet. Add one above.":`No units at the ${stageFilter} stage.`}</div>
-        ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-            {visibleProjects.map(p=>(
-              <ProjectCard
-                key={p.id}
-                project={p}
-                onEdit={setProjectModal}
-                onDelete={deleteProject}
-                onUpdateCounts={updateCounts}
-                isDragOver={dragOverId===p.id}
-                onDragStart={()=>setDragId(p.id)}
-                onDragOver={()=>setDragOverId(p.id)}
-                onDrop={()=>reorderProjects(dragId, p.id)}
-              />
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const categories = activeSystem?.categories || ["Other"];
+          return (
+            <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
+              {categories.map(cat => {
+                const catProjects = visibleProjects.filter(p=>(p.category||"Other")===cat);
+                const isDropTarget = dragOverCategory===cat && dragId!==null;
+                return (
+                  <div key={cat}
+                    onDragOver={e=>{e.preventDefault();setDragOverCategory(cat);}}
+                    onDragLeave={()=>setDragOverCategory(null)}
+                    onDrop={()=>{ if(dragId) assignCategory(dragId, cat); }}
+                    style={{ borderRadius:"6px", border:`1px solid ${isDropTarget?activeSystem?.color||"#5a5a9a":"#1a1a1a"}`, background:isDropTarget?"#0e0e0e":"transparent", transition:"border-color 0.15s, background 0.15s", padding:"2px" }}
+                  >
+                    <div style={{ display:"flex", alignItems:"center", gap:"8px", padding:"6px 8px 8px" }}>
+                      <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.1em" }}>{cat}</span>
+                      <span style={{ color:"#2a2a2a", fontSize:"10px", fontFamily:"monospace" }}>{catProjects.length}</span>
+                      {isDropTarget && <span style={{ color:activeSystem?.color||"#5a5a9a", fontSize:"10px", fontFamily:"monospace" }}>← drop here</span>}
+                    </div>
+                    {catProjects.length===0 ? (
+                      <div style={{ border:"1px dashed #1e1e1e", borderRadius:"4px", padding:"16px", textAlign:"center", color:"#2a2a2a", fontSize:"11px", fontFamily:"monospace" }}>
+                        drag units here
+                      </div>
+                    ) : (
+                      <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+                        {catProjects.map(p=>(
+                          <ProjectCard
+                            key={p.id}
+                            project={p}
+                            onEdit={setProjectModal}
+                            onDelete={deleteProject}
+                            onUpdateCounts={updateCounts}
+                            isDragOver={dragOverId===p.id}
+                            onDragStart={()=>setDragId(p.id)}
+                            onDragOver={()=>setDragOverId(p.id)}
+                            onDrop={()=>reorderProjects(dragId, p.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       )}
