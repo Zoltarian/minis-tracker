@@ -947,10 +947,12 @@ function App() {
           <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>{stageFilter==="All"?"No units here yet. Add one above.":`No units at the ${stageFilter} stage.`}</div>
         ) : (() => {
           const categories = activeSystem?.categories || ["Other"];
+          const validCats = new Set(categories);
+          const uncategorised = visibleProjects.filter(p => !p.category || !validCats.has(p.category));
           return (
             <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
               {categories.map(cat => {
-                const catProjects = visibleProjects.filter(p=>(p.category||"Other")===cat);
+                const catProjects = visibleProjects.filter(p=>p.category===cat);
                 const isDropTarget = dragOverCategory===cat && dragId!==null;
                 return (
                   <div key={cat}
@@ -988,6 +990,34 @@ function App() {
                   </div>
                 );
               })}
+              {uncategorised.length > 0 && (
+                <div
+                  onDragOver={e=>{e.preventDefault();setDragOverCategory("__uncategorised__");}}
+                  onDragLeave={()=>setDragOverCategory(null)}
+                  onDrop={()=>{ if(dragId) { setDragId(null); setDragOverCategory(null); } }}
+                  style={{ borderRadius:"6px", border:"1px solid #3a2a1a", background:"#0e0a06", padding:"2px" }}
+                >
+                  <div style={{ display:"flex", alignItems:"center", gap:"8px", padding:"6px 8px 8px" }}>
+                    <span style={{ color:"#6a4a2a", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.1em" }}>⚠ Uncategorised</span>
+                    <span style={{ color:"#4a3a2a", fontSize:"10px", fontFamily:"monospace" }}>{uncategorised.length} — drag these into a category above</span>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+                    {uncategorised.map(p=>(
+                      <ProjectCard
+                        key={p.id}
+                        project={p}
+                        onEdit={setProjectModal}
+                        onDelete={deleteProject}
+                        onUpdateCounts={updateCounts}
+                        isDragOver={dragOverId===p.id}
+                        onDragStart={()=>setDragId(p.id)}
+                        onDragOver={()=>setDragOverId(p.id)}
+                        onDrop={()=>reorderProjects(dragId, p.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
