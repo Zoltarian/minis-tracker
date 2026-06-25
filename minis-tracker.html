@@ -116,14 +116,20 @@ async function readAll() {
   return fetchWithRetry(SCRIPT_URL + "?action=read");
 }
 
-async function saveAll(armies, units, settings) {
+async function saveSheet(sheetName, rows) {
   const params = new URLSearchParams({
-    action:   "save",
-    armies:   JSON.stringify(armies),
-    units:    JSON.stringify(units),
-    settings: JSON.stringify(settings),
+    action: "saveSheet",
+    sheet:  sheetName,
+    rows:   JSON.stringify(rows),
   });
   return fetchWithRetry(SCRIPT_URL + "?" + params.toString());
+}
+
+async function saveAll(armies, units, settings) {
+  // Save each sheet separately to avoid URL length limits
+  await saveSheet("armies",   armies);
+  await saveSheet("units",    units);
+  await saveSheet("settings", settings);
 }
 
 function parseArmies(data) {
