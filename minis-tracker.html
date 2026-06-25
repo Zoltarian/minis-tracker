@@ -197,23 +197,20 @@ function ProjectCard({ project, onEdit, onDelete, onUpdateCounts, onDragStart, o
       <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:"2px", padding:"0 10px 10px" }}>
         {STAGES.map(s => {
           const cnt=project.stageCounts[s]||0, sc=STAGE_COLORS[s], active=cnt>0;
+          const btnStyle = (enabled) => ({ background:"none", border:`1px solid ${enabled?"#3a3a3a":"#1e1e1e"}`, color:enabled?"#888":"#2a2a2a", borderRadius:"3px", width:"18px", height:"18px", cursor:enabled?"pointer":"default", fontSize:"13px", padding:0, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 });
           return (
-            <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"5px 4px", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", transition:"background 0.2s, border-color 0.2s" }}>
+            <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"5px 4px", display:"flex", flexDirection:"column", alignItems:"center", gap:"3px", transition:"background 0.2s, border-color 0.2s" }}>
               <div style={{ color:active?sc.text:"#333", fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.03em", lineHeight:1, textAlign:"center" }}>{STAGE_SHORT[s]}</div>
               <input
-                type="number"
-                min="0"
-                value={cnt}
+                type="number" min="0" value={cnt}
                 onChange={e => setStageValue(s, e.target.value)}
                 onFocus={e => e.target.select()}
-                style={{
-                  width:"100%", background:"none", border:"none",
-                  color:active?"#e8e0d0":"#333",
-                  fontFamily:"'Cinzel',serif", fontSize:"15px", fontWeight:"700",
-                  textAlign:"center", padding:"0", cursor:"text",
-                  WebkitAppearance:"none", MozAppearance:"textfield",
-                }}
+                style={{ width:"100%", background:"none", border:"none", color:active?"#e8e0d0":"#444", fontFamily:"'Cinzel',serif", fontSize:"15px", fontWeight:"700", textAlign:"center", padding:"0", cursor:"text", WebkitAppearance:"none", MozAppearance:"textfield" }}
               />
+              <div style={{ display:"flex", gap:"2px" }}>
+                <button onClick={()=>setStageValue(s, cnt-1)} disabled={cnt===0} style={btnStyle(cnt>0)}>−</button>
+                <button onClick={()=>setStageValue(s, cnt+1)} style={btnStyle(true)}>+</button>
+              </div>
             </div>
           );
         })}
@@ -296,17 +293,24 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
           <div>
             <div style={lStyle}>Stage Breakdown</div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"6px" }}>
-              {STAGES.map(s=>{ const cnt=stageCounts[s]||0, sc=STAGE_COLORS[s], active=cnt>0; return (
-                <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"8px 6px", display:"flex", flexDirection:"column", alignItems:"center", gap:"5px", transition:"background 0.2s, border-color 0.2s" }}>
-                  <div style={{ color:active?sc.text:"#444", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em", textAlign:"center" }}>{s}</div>
-                  <input
-                    type="number" min="0" value={cnt}
-                    onChange={e=>setStageVal(s, e.target.value)}
-                    onFocus={e=>e.target.select()}
-                    style={{ width:"100%", background:"#0a0a0a", border:`1px solid ${active?sc.border:"#2a2a2a"}`, borderRadius:"3px", color:active?"#e8e0d0":"#555", fontFamily:"'Cinzel',serif", fontSize:"16px", fontWeight:"700", textAlign:"center", padding:"4px 0", WebkitAppearance:"none", MozAppearance:"textfield" }}
-                  />
-                </div>
-              );})}
+              {STAGES.map(s=>{ const cnt=stageCounts[s]||0, sc=STAGE_COLORS[s], active=cnt>0;
+                const btnStyle = (enabled) => ({ background:"none", border:`1px solid ${enabled?"#444":"#222"}`, color:enabled?"#aaa":"#333", borderRadius:"3px", width:"26px", height:"26px", cursor:enabled?"pointer":"default", fontSize:"15px", display:"flex", alignItems:"center", justifyContent:"center" });
+                return (
+                  <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"8px 6px", display:"flex", flexDirection:"column", alignItems:"center", gap:"5px", transition:"background 0.2s, border-color 0.2s" }}>
+                    <div style={{ color:active?sc.text:"#444", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em", textAlign:"center" }}>{s}</div>
+                    <input
+                      type="number" min="0" value={cnt}
+                      onChange={e=>setStageVal(s, e.target.value)}
+                      onFocus={e=>e.target.select()}
+                      style={{ width:"100%", background:"#0a0a0a", border:`1px solid ${active?sc.border:"#2a2a2a"}`, borderRadius:"3px", color:active?"#e8e0d0":"#555", fontFamily:"'Cinzel',serif", fontSize:"16px", fontWeight:"700", textAlign:"center", padding:"4px 0", WebkitAppearance:"none", MozAppearance:"textfield" }}
+                    />
+                    <div style={{ display:"flex", gap:"4px" }}>
+                      <button onClick={()=>setStageVal(s, cnt-1)} disabled={cnt===0} style={btnStyle(cnt>0)}>−</button>
+                      <button onClick={()=>setStageVal(s, cnt+1)} style={btnStyle(true)}>+</button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div><div style={lStyle}>Notes</div><input style={iStyle} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Colour scheme, priority, etc."/></div>
