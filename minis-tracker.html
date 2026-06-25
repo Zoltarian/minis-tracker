@@ -271,13 +271,13 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
     if(currentTotal===0) setStageCounts({...emptyStages(), Unbuilt:n});
     else setStageCounts(p=>({...p, Unbuilt:Math.max(0,(p.Unbuilt||0)+(n-currentTotal))}));
   };
-  const adj = (s,d) => setStageCounts(p=>({...p,[s]:Math.max(0,(p[s]||0)+d)}));
+  const setStageVal = (s, val) => setStageCounts(p=>({...p,[s]:Math.max(0,parseInt(val)||0)}));
   const iStyle = { background:"#111", border:"1px solid #333", color:"#e8e0d0", borderRadius:"4px", padding:"8px 10px", width:"100%", fontFamily:"'Cinzel',serif", fontSize:"13px" };
   const lStyle = { color:"#888", fontSize:"11px", marginBottom:"4px", textTransform:"uppercase", letterSpacing:"0.08em", fontFamily:"monospace" };
   const canSave = name.trim() && currentTotal>0;
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, padding:"20px" }} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{ background:"#161616", border:"1px solid #3a3a5e", borderRadius:"8px", padding:"24px", width:"100%", maxWidth:"440px", boxShadow:"0 0 40px rgba(60,60,120,0.3)", maxHeight:"92vh", overflowY:"auto" }}>
+      <div style={{ background:"#161616", border:"1px solid #3a3a5e", borderRadius:"8px", padding:"24px", width:"100%", maxWidth:"460px", boxShadow:"0 0 40px rgba(60,60,120,0.3)", maxHeight:"92vh", overflowY:"auto" }}>
         <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"17px", fontWeight:"700", marginBottom:"20px" }}>{project?.id?"Edit Unit":"Add Unit"}</div>
         <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
           <div><div style={lStyle}>Name</div><input style={iStyle} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Clanrat Regiment"/></div>
@@ -293,16 +293,18 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
             </div>
             {currentTotal>0&&<div style={{ color:"#555", fontSize:"11px", marginTop:"5px", fontFamily:"monospace" }}>{currentTotal} model{currentTotal!==1?"s":""} assigned</div>}
           </div>
-          <div><div style={lStyle}>Stage Breakdown</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:"5px" }}>
-              {STAGES.map(s=>{ const cnt=stageCounts[s]||0, sc=STAGE_COLORS[s]; return (
-                <div key={s} style={{ display:"flex", alignItems:"center", gap:"8px", background:cnt>0?sc.dot:"#0e0e0e", border:`1px solid ${cnt>0?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"6px 10px", transition:"background 0.2s" }}>
-                  <div style={{ color:cnt>0?sc.text:"#333", fontSize:"11px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em", width:"80px", flexShrink:0 }}>{s}</div>
-                  <div style={{ display:"flex", alignItems:"center", gap:"6px", marginLeft:"auto" }}>
-                    <button onClick={()=>adj(s,-1)} disabled={cnt===0} style={{ background:"none", border:`1px solid ${cnt>0?"#444":"#222"}`, color:cnt>0?"#aaa":"#333", borderRadius:"3px", width:"24px", height:"24px", cursor:cnt>0?"pointer":"default", fontSize:"14px", display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
-                    <span style={{ color:cnt>0?"#e8e0d0":"#333", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", width:"28px", textAlign:"center" }}>{cnt}</span>
-                    <button onClick={()=>adj(s,1)} style={{ background:"none", border:"1px solid #444", color:"#aaa", borderRadius:"3px", width:"24px", height:"24px", cursor:"pointer", fontSize:"14px", display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
-                  </div>
+          <div>
+            <div style={lStyle}>Stage Breakdown</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"6px" }}>
+              {STAGES.map(s=>{ const cnt=stageCounts[s]||0, sc=STAGE_COLORS[s], active=cnt>0; return (
+                <div key={s} style={{ background:active?sc.dot:"#0e0e0e", border:`1px solid ${active?sc.border:"#1e1e1e"}`, borderRadius:"4px", padding:"8px 6px", display:"flex", flexDirection:"column", alignItems:"center", gap:"5px", transition:"background 0.2s, border-color 0.2s" }}>
+                  <div style={{ color:active?sc.text:"#444", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em", textAlign:"center" }}>{s}</div>
+                  <input
+                    type="number" min="0" value={cnt}
+                    onChange={e=>setStageVal(s, e.target.value)}
+                    onFocus={e=>e.target.select()}
+                    style={{ width:"100%", background:"#0a0a0a", border:`1px solid ${active?sc.border:"#2a2a2a"}`, borderRadius:"3px", color:active?"#e8e0d0":"#555", fontFamily:"'Cinzel',serif", fontSize:"16px", fontWeight:"700", textAlign:"center", padding:"4px 0", WebkitAppearance:"none", MozAppearance:"textfield" }}
+                  />
                 </div>
               );})}
             </div>
