@@ -58,7 +58,7 @@ const GAME_SYSTEMS = [
       "Aeldari","Drukhari","Tyranids","Orks","Necrons","T'au Empire","Genestealer Cults","Leagues of Votann",
   ]},
   { id:"aos", name:"Age of Sigmar", color:"#8a7a2a", icon:"⚡",
-    categories:["Characters","Infantry","Cavalry","Monster","Siege Weapon"],
+    categories:["Characters","Infantry","Cavalry","Monster","Siege Weapon","Spells/Summons"],
     factions:[
       "Stormcast Eternals","Cities of Sigmar","Daughters of Khaine","Fyreslayers","Idoneth Deepkin","Kharadron Overlords","Lumineth Realm-Lords","Seraphon","Sylvaneth",
       "Blades of Khorne","Disciples of Tzeentch","Maggotkin of Nurgle","Hedonites of Slaanesh","Skaven","Slaves to Darkness","Beasts of Chaos",
@@ -214,7 +214,7 @@ function ProjectCard({ project, onEdit, onDelete, onUpdateCounts, onDragStart, o
           <div>
             <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", letterSpacing:"0.02em" }}>{project.name}</div>
             <div style={{ color:"#555", fontSize:"11px", marginTop:"2px", fontFamily:"monospace" }}>
-              {total} {total===1?"model":"models"}
+              {total} {total===1?"model":"models"}{project.squadSize>1?` · squads of ${project.squadSize}`:""}
               {done>0 && <span style={{ color:"#5a7a2a", marginLeft:"6px" }}>· {done} done</span>}
               {project.notes && <span style={{ color:"#444", marginLeft:"6px", fontStyle:"italic" }}>· {project.notes}</span>}
             </div>
