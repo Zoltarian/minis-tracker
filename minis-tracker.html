@@ -152,7 +152,14 @@ function parseUnits(data) {
     },
     hasTokens:  r[10] === "true",
     tokenName:  r[11] || "Token",
-    tokenStageCounts: r[12] ? JSON.parse(r[12]) : Object.fromEntries(STAGES.map(s=>[s,0])),
+    tokenStageCounts: {
+      Unbuilt:          parseInt(r[12]) || 0,
+      Built:            parseInt(r[13]) || 0,
+      Primed:           parseInt(r[14]) || 0,
+      Painting:         parseInt(r[15]) || 0,
+      Painted:          parseInt(r[16]) || 0,
+      "Painted & Based":parseInt(r[17]) || 0,
+    },
   }));
 }
 
@@ -164,7 +171,7 @@ function parseSettings(data) {
 }
 
 function armyToRow(a) { return [String(a.id), a.gameSystemId, a.faction, a.customName||"", a.name, a.color]; }
-function unitToRow(p) { return [String(p.id), String(p.armyId), p.name, p.notes||"", ...STAGES.map(s => String(p.stageCounts[s]||0)), String(!!p.hasTokens), p.tokenName||"Token", JSON.stringify(p.tokenStageCounts||Object.fromEntries(STAGES.map(s=>[s,0])))]; }
+function unitToRow(p) { const tsc = p.tokenStageCounts || {}; return [String(p.id), String(p.armyId), p.name, p.notes||"", ...STAGES.map(s => String(p.stageCounts[s]||0)), String(!!p.hasTokens), p.tokenName||"Token", ...STAGES.map(s => String(tsc[s]||0))]; }
 
 // ── Components ────────────────────────────────────────────────
 
@@ -502,7 +509,7 @@ function App() {
     saveTimer.current = setTimeout(async () => {
       try {
         const armyRows     = [["id","gameSystemId","faction","customName","name","color"], ...newArmies.map(armyToRow)];
-        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painting","Painted","Painted & Based","hasTokens","tokenName","tokenCount"], ...newProjects.map(unitToRow)];
+        const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painting","Painted","Painted & Based","hasTokens","tokenName","t_Unbuilt","t_Built","t_Primed","t_Painting","t_Painted","t_PaintedBased"], ...newProjects.map(unitToRow)];
         const settingsRows = [["key","value"], ...Object.entries(newSettings).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
         await saveAll(armyRows, unitRows, settingsRows);
         setStatus("ready");
