@@ -453,80 +453,48 @@ const QUEST_TRANSITIONS = [
   { from:"Painted",  to:"Painted & Based", verb:"Base",   color:"#5a7a2a" },
 ];
 
-function generateQuests(projects, armies, systemId) {
-  // Filter to projects in the current system
-  const systemArmyIds = new Set(armies.filter(a=>a.gameSystemId===systemId).map(a=>a.id));
-  const relevant = projects.filter(p=>systemArmyIds.has(p.armyId) && (p.squadSize||1) >= 1);
-
-  return QUEST_TRANSITIONS.map(({from, to, verb, color}) => {
-    // Find all units that have models in the "from" stage
-    const candidates = relevant.filter(p => (p.stageCounts[from]||0) > 0);
-    if (candidates.length === 0) return null;
-
-    // Pick a random candidate
-    const unit = candidates[Math.floor(Math.random() * candidates.length)];
-    const army = armies.find(a=>a.id===unit.armyId);
-    const squadSize = unit.squadSize || 1;
-    const available = unit.stageCounts[from] || 0;
-
-    // How many needed to complete the next squad boundary?
-    const alreadyInTo = unit.stageCounts[to] || 0;
-    const remainder = squadSize - (alreadyInTo % squadSize);
-    const needed = remainder === squadSize ? squadSize : remainder; // full squad or top-up
-    const count = Math.min(needed, available);
-
-    const isTopUp = remainder !== squadSize;
-    const armyName = army ? army.name : "";
-
-    return { unitId: unit.id, unitName: unit.name, armyName, from, to, verb, color, count, squadSize, isTopUp };
-  });
+function pickQuest(projects, armies, transition, excludeUnitId=null) {
+  const { from, to, verb, color } = transition;
+  const candidates = projects.filter(p => (p.stageCounts[from]||0) > 0);
+  if (candidates.length === 0) return null;
+  const pool = excludeUnitId ? (candidates.filter(p=>p.id!==excludeUnitId).length > 0 ? candidates.filter(p=>p.id!==excludeUnitId) : candidates) : candidates;
+  const unit = pool[Math.floor(Math.random() * pool.length)];
+  const army = armies.find(a=>a.id===unit.armyId);
+  const gs = army ? GAME_SYSTEMS.find(g=>g.id===army.gameSystemId) : null;
+  const squadSize = unit.squadSize || 1;
+  const available = unit.stageCounts[from] || 0;
+  const alreadyInTo = unit.stageCounts[to] || 0;
+  const remainder = squadSize - (alreadyInTo % squadSize);
+  const needed = remainder === squadSize ? squadSize : remainder;
+  const count = Math.min(needed, available);
+  const isTopUp = remainder !== squadSize;
+  return { unitId:unit.id, unitName:unit.name, armyName:army?.name||"", systemName:gs?.name||"", systemColor:gs?.color||"#888", from, to, verb, color, count, squadSize, isTopUp };
 }
 
-function QuestsPanel({ projects, armies, systemId }) {
-  const [quests, setQuests] = React.useState(() => generateQuests(projects, armies, systemId));
-  const [seeds,  setSeeds]  = React.useState(QUEST_TRANSITIONS.map((_,i)=>i));
+function generateQuests(projects, armies) {
+  return QUEST_TRANSITIONS.map(t => pickQuest(projects, armies, t));
+}
 
-  // Regenerate when projects/system changes
-  React.useEffect(() => {
-    setQuests(generateQuests(projects, armies, systemId));
-  }, [systemId]);
+function QuestsPanel({ projects, armies }) {
+  const [quests, setQuests] = React.useState(() => generateQuests(projects, armies));
 
   const refreshQuest = (idx) => {
     setQuests(prev => {
       const next = [...prev];
-      const transition = QUEST_TRANSITIONS[idx];
-      const systemArmyIds = new Set(armies.filter(a=>a.gameSystemId===systemId).map(a=>a.id));
-      const relevant = projects.filter(p=>systemArmyIds.has(p.armyId));
-      const candidates = relevant.filter(p=>(p.stageCounts[transition.from]||0)>0);
-      if (candidates.length === 0) { next[idx] = null; return next; }
-
-      // Pick a different unit if possible
-      const current = prev[idx]?.unitId;
-      const others = candidates.filter(p=>p.id!==current);
-      const pool = others.length > 0 ? others : candidates;
-      const unit = pool[Math.floor(Math.random() * pool.length)];
-      const army = armies.find(a=>a.id===unit.armyId);
-      const squadSize = unit.squadSize||1;
-      const available = unit.stageCounts[transition.from]||0;
-      const alreadyInTo = unit.stageCounts[transition.to]||0;
-      const remainder = squadSize - (alreadyInTo % squadSize);
-      const needed = remainder === squadSize ? squadSize : remainder;
-      const count = Math.min(needed, available);
-      const isTopUp = remainder !== squadSize;
-
-      next[idx] = { unitId:unit.id, unitName:unit.name, armyName:army?.name||"", from:transition.from, to:transition.to, verb:transition.verb, color:transition.color, count, squadSize, isTopUp };
+      next[idx] = pickQuest(projects, armies, QUEST_TRANSITIONS[idx], prev[idx]?.unitId);
       return next;
     });
   };
 
-  const activeSystem = GAME_SYSTEMS.find(g=>g.id===systemId);
+  const rerollAll = () => setQuests(generateQuests(projects, armies));
+
   const hasAny = quests.some(q=>q!==null);
 
   return (
     <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"18px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"18px" }}>
         <span style={{ fontFamily:"'Cinzel',serif", fontSize:"16px", fontWeight:"700", color:"#c8b870" }}>⚔ Daily Quests</span>
-        <span style={{ color:"#444", fontSize:"11px", fontFamily:"monospace" }}>{activeSystem?.name}</span>
+        <button onClick={rerollAll} style={{ background:"none", border:"1px solid #3a3a2a", color:"#7a6a3a", borderRadius:"4px", padding:"5px 12px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px" }}>↻ Reroll All</button>
       </div>
       {!hasAny ? (
         <div style={{ color:"#333", textAlign:"center", padding:"60px 0", fontFamily:"monospace", fontSize:"13px" }}>
@@ -543,20 +511,25 @@ function QuestsPanel({ projects, armies, systemId }) {
               </div>
             );
             return (
-              <div key={idx} style={{ background:"#121212", border:`1px solid ${q.color}44`, borderRadius:"6px", padding:"14px 16px", display:"flex", alignItems:"center", gap:"12px" }}>
-                <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:q.color, flexShrink:0 }}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", marginBottom:"4px" }}>
-                    {q.verb} <span style={{ color:q.color }}>{q.count} {q.unitName}</span>
+              <div key={idx} style={{ background:"#121212", border:`1px solid ${q.color}44`, borderRadius:"6px", padding:"14px 16px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"8px" }}>
+                  <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:q.color, flexShrink:0 }}/>
+                  <div style={{ flex:1 }}>
+                    <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", marginBottom:"3px" }}>
+                      {q.verb} <span style={{ color:q.color }}>{q.count} {q.unitName}</span>
+                    </div>
+                    <div style={{ color:"#555", fontSize:"11px", fontFamily:"monospace" }}>
+                      {q.isTopUp ? `Top up to next squad of ${q.squadSize}` : `1 full squad of ${q.squadSize}`}
+                      <span style={{ color:"#3a3a3a", marginLeft:"6px" }}>{q.from} → {q.to}</span>
+                    </div>
                   </div>
-                  <div style={{ color:"#555", fontSize:"11px", fontFamily:"monospace" }}>
-                    {q.isTopUp
-                      ? `Top up to next squad of ${q.squadSize} · ${q.armyName}`
-                      : `1 full squad of ${q.squadSize} · ${q.armyName}`}
-                    <span style={{ color:"#3a3a3a", marginLeft:"8px" }}>{q.from} → {q.to}</span>
-                  </div>
+                  <button onClick={()=>refreshQuest(idx)} title="Reroll this quest" style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"5px 9px", cursor:"pointer", fontSize:"13px", flexShrink:0 }}>↻</button>
                 </div>
-                <button onClick={()=>refreshQuest(idx)} title="Reroll this quest" style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"5px 9px", cursor:"pointer", fontSize:"13px", flexShrink:0 }}>↻</button>
+                <div style={{ display:"flex", alignItems:"center", gap:"6px", borderTop:"1px solid #1e1e1e", paddingTop:"7px" }}>
+                  <span style={{ width:"5px", height:"5px", borderRadius:"50%", background:q.systemColor, flexShrink:0 }}/>
+                  <span style={{ color:q.systemColor, fontSize:"10px", fontFamily:"'Cinzel',serif", fontWeight:"600" }}>{q.systemName}</span>
+                  <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace" }}>· {q.armyName}</span>
+                </div>
               </div>
             );
           })}
@@ -785,15 +758,18 @@ function App() {
       <div style={{ background:"#080808", borderBottom:"1px solid #1a1a1a" }}>
         <div style={{ maxWidth:"820px", margin:"0 auto", padding:"14px 20px 0" }}>
           <div style={{ marginBottom:"14px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"10px" }}>
-              <span style={{ fontSize:"20px", fontFamily:"'Cinzel',serif", fontWeight:"700", letterSpacing:"0.08em", color:"#c8b870" }}>⚔ MINIS</span>
-              {status==="saving" && <span style={{ color:"#3a5a3a", fontSize:"11px", fontFamily:"monospace" }}>saving…</span>}
-              {saveError && (
-                <span style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                  <span style={{ color:"#8a3a3a", fontSize:"11px", fontFamily:"monospace" }}>⚠ save failed</span>
-                  <button onClick={()=>loadData()} style={{ background:"none", border:"1px solid #5a3a3a", color:"#9a5a5a", borderRadius:"3px", padding:"2px 7px", cursor:"pointer", fontFamily:"monospace", fontSize:"10px" }}>reconnect</button>
-                </span>
-              )}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"10px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                <span style={{ fontSize:"20px", fontFamily:"'Cinzel',serif", fontWeight:"700", letterSpacing:"0.08em", color:"#c8b870" }}>⚔ MINIS</span>
+                {status==="saving" && <span style={{ color:"#3a5a3a", fontSize:"11px", fontFamily:"monospace" }}>saving…</span>}
+                {saveError && (
+                  <span style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                    <span style={{ color:"#8a3a3a", fontSize:"11px", fontFamily:"monospace" }}>⚠ save failed</span>
+                    <button onClick={()=>loadData()} style={{ background:"none", border:"1px solid #5a3a3a", color:"#9a5a5a", borderRadius:"3px", padding:"2px 7px", cursor:"pointer", fontFamily:"monospace", fontSize:"10px" }}>reconnect</button>
+                  </span>
+                )}
+              </div>
+              <button onClick={()=>setActiveView(v=>v==="quests"?"units":"quests")} style={{ background:activeView==="quests"?"#1e1e12":"none", border:`1px solid ${activeView==="quests"?"#7a6a2a":"#2a2a2a"}`, color:activeView==="quests"?"#c8b060":"#666", borderRadius:"4px", padding:"5px 12px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em", flexShrink:0 }}>⚔ Quests</button>
             </div>
             <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
               {STAGES.map(s => {
@@ -868,16 +844,13 @@ function App() {
               </button>;
             })}
           </div>
-          <div style={{ display:"flex", gap:"6px", marginLeft:"8px", flexShrink:0 }}>
-            <button onClick={()=>setActiveView(v=>v==="quests"?"units":"quests")} style={{ background:activeView==="quests"?"#1e1e12":"none", border:`1px solid ${activeView==="quests"?"#7a6a2a":"#2a2a2a"}`, color:activeView==="quests"?"#c8b060":"#555", borderRadius:"4px", padding:"4px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px" }}>⚔ Quests</button>
-            <button onClick={()=>setArmyModal("new")} style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"4px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px" }}>+ Army</button>
-          </div>
+          <button onClick={()=>setArmyModal("new")} style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"4px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"11px", marginLeft:"8px", flexShrink:0 }}>+ Army</button>
         </div>
       </div>
 
       {/* ── Body ── */}
       {activeView==="quests" ? (
-        <QuestsPanel projects={projects} armies={armies} systemId={resolvedSid}/>
+        <QuestsPanel projects={projects} armies={armies}/>
       ) : (
       <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
         {/* Stage pills component — reused for army and system views */}
