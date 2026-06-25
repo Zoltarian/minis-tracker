@@ -299,6 +299,38 @@ function ProjectCard({ project, onEdit, onDelete, onUpdateCounts, onDragStart, o
   );
 }
 
+
+// ── Tooltip ───────────────────────────────────────────────────
+function Tooltip({ lines, color, children }) {
+  const [show, setShow] = React.useState(false);
+  const [pos,  setPos]  = React.useState({ x:0, y:0 });
+  const ref = React.useRef(null);
+
+  return (
+    <div ref={ref} style={{ position:"relative", display:"inline-flex" }}
+      onMouseEnter={e=>{ setShow(true); const r=ref.current.getBoundingClientRect(); setPos({x:r.left, y:r.bottom+6}); }}
+      onMouseLeave={()=>setShow(false)}
+    >
+      {children}
+      {show && lines && lines.length>0 && (
+        <div style={{
+          position:"fixed", left:pos.x, top:pos.y, zIndex:999,
+          background:"#161616", border:`1px solid ${color||"#333"}44`,
+          borderRadius:"6px", padding:"8px 12px", minWidth:"160px", maxWidth:"280px",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.7)", pointerEvents:"none",
+        }}>
+          {lines.map((line,i)=>(
+            <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"16px", padding:"2px 0", borderTop: i>0?"1px solid #1e1e1e":"none" }}>
+              <span style={{ color:"#666", fontSize:"11px", fontFamily:"monospace" }}>{line.label}</span>
+              <span style={{ color:"#e8e0d0", fontSize:"12px", fontFamily:"'Cinzel',serif", fontWeight:"600" }}>{line.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ArmyModal({ army, gameSystemId, factions, onSave, onClose }) {
   const [faction,    setFaction]    = useState(army?.faction || factions[0] || "");
   const [customName, setCustomName] = useState(army?.customName || "");
@@ -313,7 +345,7 @@ function ArmyModal({ army, gameSystemId, factions, onSave, onClose }) {
         <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
           <div><div style={lStyle}>Faction</div>
             <select style={{ ...iStyle, appearance:"none", cursor:"pointer" }} value={faction} onChange={e=>setFaction(e.target.value)}>
-              {factions.map(f=><option key={f} value={f}>{f}</option>)}
+              {[...factions].sort((a,b)=>a.localeCompare(b)).map(f=><option key={f} value={f}>{f}</option>)}
             </select>
           </div>
           <div><div style={lStyle}>Custom Name <span style={{ color:"#555", textTransform:"none", letterSpacing:0 }}>(optional)</span></div>
@@ -731,11 +763,14 @@ function App() {
     const arr = [...projects];
     const fromIdx = arr.findIndex(p => p.id === fromId);
     const toIdx   = arr.findIndex(p => p.id === toId);
+    // When reordering within a category, also snap to the target's category
+    const targetCategory = arr[toIdx]?.category;
     const [moved] = arr.splice(fromIdx, 1);
+    if (targetCategory) moved.category = targetCategory;
     arr.splice(toIdx, 0, moved);
     setProjects(arr);
     scheduleSave(armies, arr, getSettings());
-    setDragId(null); setDragOverId(null);
+    setDragId(null); setDragOverId(null); setDragOverCategory(null);
   };
 
   const assignCategory = (unitId, category) => {
@@ -814,11 +849,20 @@ function App() {
                 const cnt = projects.reduce((sum, p) => sum + stageCountWithTokens(p, s), 0);
                 if (!cnt) return null;
                 const sc = STAGE_COLORS[s];
+                // Tooltip: breakdown by game system
+                const tooltipLines = activeEnabled.map(sid => {
+                  const gs = GAME_SYSTEMS.find(g=>g.id===sid);
+                  const sysArmyIds = new Set(armies.filter(a=>a.gameSystemId===sid).map(a=>a.id));
+                  const sysCnt = projects.filter(p=>sysArmyIds.has(p.armyId)).reduce((sum,p)=>sum+stageCountWithTokens(p,s),0);
+                  return sysCnt>0 ? { label: gs?.name||sid, value: sysCnt } : null;
+                }).filter(Boolean);
                 return (
-                  <div key={s} style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px" }}>
-                    <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
-                    <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
-                  </div>
+                  <Tooltip key={s} lines={tooltipLines} color={sc.border}>
+                    <div style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px", cursor:"default" }}>
+                      <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
+                      <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
+                    </div>
+                  </Tooltip>
                 );
               })}
               <div style={{ background:"#1a1a1a", border:"1px solid #2a2a2a", borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px" }}>
@@ -918,11 +962,20 @@ function App() {
                   const cnt = srcProjects.reduce((sum,p)=>sum+stageCountWithTokens(p,s),0);
                   if (!cnt) return null;
                   const sc = STAGE_COLORS[s];
+                  // Tooltip: army view → per-unit breakdown; system view → per-army breakdown
+                  const tooltipLines = activeArmy
+                    ? srcProjects.filter(p=>(p.stageCounts[s]||0)+(p.hasTokens?((p.tokenStageCounts||{})[s]||0):0)>0).map(p=>({ label:p.name, value:stageCountWithTokens(p,s) }))
+                    : armies.filter(a=>a.gameSystemId===resolvedSid).map(a=>{
+                        const aCnt = srcProjects.filter(p=>p.armyId===a.id).reduce((sum,p)=>sum+stageCountWithTokens(p,s),0);
+                        return aCnt>0 ? { label:a.name, value:aCnt } : null;
+                      }).filter(Boolean);
                   return (
-                    <div key={s} style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px" }}>
-                      <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
-                      <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
-                    </div>
+                    <Tooltip key={s} lines={tooltipLines} color={sc.border}>
+                      <div style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px", cursor:"default" }}>
+                        <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
+                        <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
+                      </div>
+                    </Tooltip>
                   );
                 })}
               </div>
@@ -957,8 +1010,9 @@ function App() {
                 return (
                   <div key={cat}
                     onDragOver={e=>{e.preventDefault();setDragOverCategory(cat);}}
+                    onDragEnter={()=>setDragOverId(null)}
                     onDragLeave={()=>setDragOverCategory(null)}
-                    onDrop={()=>{ if(dragId) assignCategory(dragId, cat); }}
+                    onDrop={(e)=>{ if(dragId && !dragOverId) { e.stopPropagation(); assignCategory(dragId, cat); } }}
                     style={{ borderRadius:"6px", border:`1px solid ${isDropTarget?activeSystem?.color||"#5a5a9a":"#1a1a1a"}`, background:isDropTarget?"#0e0e0e":"transparent", transition:"border-color 0.15s, background 0.15s", padding:"2px" }}
                   >
                     <div style={{ display:"flex", alignItems:"center", gap:"8px", padding:"6px 8px 8px" }}>
@@ -982,7 +1036,7 @@ function App() {
                             isDragOver={dragOverId===p.id}
                             onDragStart={()=>setDragId(p.id)}
                             onDragOver={()=>setDragOverId(p.id)}
-                            onDrop={()=>reorderProjects(dragId, p.id)}
+                            onDrop={(e)=>{ e.stopPropagation(); reorderProjects(dragId, p.id); }}
                           />
                         ))}
                       </div>
