@@ -868,6 +868,7 @@ function App() {
                     <div style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px", cursor:"default" }}>
                       <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
                       <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
+                      <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", opacity:0.8 }}>{grandTotal>0?Math.round(cnt/grandTotal*100):0}%</span>
                     </div>
                   </Tooltip>
                 );
@@ -981,6 +982,7 @@ function App() {
                       <div style={{ background:sc.dot, border:`1px solid ${sc.border}`, borderRadius:"4px", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:"1px", cursor:"default" }}>
                         <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.05em" }}>{STAGE_SHORT[s]}</span>
                         <span style={{ color:"#e8e0d0", fontSize:"14px", fontFamily:"'Cinzel',serif", fontWeight:"700" }}>{cnt}</span>
+                        <span style={{ color:sc.text, fontSize:"9px", fontFamily:"monospace", opacity:0.8 }}>{total>0?Math.round(cnt/total*100):0}%</span>
                       </div>
                     </Tooltip>
                   );
