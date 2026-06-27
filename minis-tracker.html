@@ -367,7 +367,7 @@ function ArmyModal({ army, gameSystemId, factions, onSave, onClose }) {
   );
 }
 
-function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
+function ProjectModal({ project, armies, defaultArmyId, defaultCategory, onSave, onClose }) {
   const init = project?.stageCounts || emptyStages();
   const [name,        setName]        = useState(project?.name || "");
   const [armyId,      setArmyId]      = useState(project?.armyId ?? (defaultArmyId || armies[0]?.id));
@@ -381,7 +381,13 @@ function ProjectModal({ project, armies, defaultArmyId, onSave, onClose }) {
     else setStageCounts(p=>({...p, Unbuilt:Math.max(0,(p.Unbuilt||0)+(n-currentTotal))}));
   };
   const [squadSize,         setSquadSize]         = useState(project?.squadSize || 1);
-  const [category,          setCategory]          = useState(project?.category || (armies[0] ? (GAME_SYSTEMS.find(g=>g.id===armies.find(a=>a.id===(project?.armyId||defaultArmyId||armies[0]?.id))?.gameSystemId)?.categories||["Other"])[0] : "Other"));
+  const [category,          setCategory]          = useState(() => {
+    if (project?.category) return project.category;
+    if (defaultCategory) return defaultCategory;
+    const army = armies.find(a=>a.id===(project?.armyId||defaultArmyId||armies[0]?.id));
+    const gs = army ? GAME_SYSTEMS.find(g=>g.id===army.gameSystemId) : null;
+    return (gs?.categories||["Other"])[0];
+  });
   const [hasTokens,         setHasTokens]         = useState(project?.hasTokens || false);
   const [tokenName,         setTokenName]         = useState(project?.tokenName || "");
   const [tokenStageCounts,  setTokenStageCounts]  = useState(project?.tokenStageCounts || Object.fromEntries(STAGES.map(s=>[s,0])));
@@ -515,11 +521,12 @@ const QUEST_TRANSITIONS = [
   { from:"Painted",  to:"Painted & Based", verb:"Base",   color:"#5a7a2a" },
 ];
 
-function pickQuest(projects, armies, transition, excludeUnitId=null) {
+function pickQuest(projects, armies, transition, excludeUnitId=null, usedIds=new Set()) {
   const { from, to, verb, color } = transition;
   const candidates = projects.filter(p => (p.stageCounts[from]||0) > 0);
   if (candidates.length === 0) return null;
-  const pool = excludeUnitId ? (candidates.filter(p=>p.id!==excludeUnitId).length > 0 ? candidates.filter(p=>p.id!==excludeUnitId) : candidates) : candidates;
+  const filtered = candidates.filter(p=>p.id!==excludeUnitId && !usedIds.has(p.id));
+  const pool = filtered.length > 0 ? filtered : candidates.filter(p=>p.id!==excludeUnitId).length>0 ? candidates.filter(p=>p.id!==excludeUnitId) : candidates;
   const unit = pool[Math.floor(Math.random() * pool.length)];
   const army = armies.find(a=>a.id===unit.armyId);
   const gs = army ? GAME_SYSTEMS.find(g=>g.id===army.gameSystemId) : null;
@@ -534,23 +541,51 @@ function pickQuest(projects, armies, transition, excludeUnitId=null) {
 }
 
 function generateQuests(projects, armies) {
-  return QUEST_TRANSITIONS.map(t => pickQuest(projects, armies, t));
+  return QUEST_TRANSITIONS.map(t => {
+    const results = [], usedIds = new Set();
+    for (let i = 0; i < 3; i++) {
+      const q = pickQuest(projects, armies, t, null, usedIds);
+      if (q) { results.push(q); usedIds.add(q.unitId); }
+    }
+    return results;
+  });
 }
 
 function QuestsPanel({ projects, armies }) {
-  const [quests, setQuests] = React.useState(() => generateQuests(projects, armies));
+  const [questGroups, setQuestGroups] = React.useState(() => generateQuests(projects, armies));
+  const [collapsed, setCollapsed] = React.useState(new Set());
 
-  const refreshQuest = (idx) => {
-    setQuests(prev => {
+  const toggleCollapse = (idx) => setCollapsed(prev => {
+    const next = new Set(prev);
+    next.has(idx) ? next.delete(idx) : next.add(idx);
+    return next;
+  });
+
+  const rerollGroup = (tIdx) => {
+    setQuestGroups(prev => {
       const next = [...prev];
-      next[idx] = pickQuest(projects, armies, QUEST_TRANSITIONS[idx], prev[idx]?.unitId);
+      const results = [], usedIds = new Set();
+      for (let i = 0; i < 3; i++) {
+        const q = pickQuest(projects, armies, QUEST_TRANSITIONS[tIdx], null, usedIds);
+        if (q) { results.push(q); usedIds.add(q.unitId); }
+      }
+      next[tIdx] = results;
       return next;
     });
   };
 
-  const rerollAll = () => setQuests(generateQuests(projects, armies));
+  const rerollSingle = (tIdx, qIdx) => {
+    setQuestGroups(prev => {
+      const next = prev.map(g=>[...g]);
+      const usedIds = new Set(next[tIdx].filter((_,i)=>i!==qIdx).map(q=>q.unitId));
+      const q = pickQuest(projects, armies, QUEST_TRANSITIONS[tIdx], prev[tIdx][qIdx]?.unitId, usedIds);
+      if (q) next[tIdx][qIdx] = q;
+      return next;
+    });
+  };
 
-  const hasAny = quests.some(q=>q!==null);
+  const rerollAll = () => setQuestGroups(generateQuests(projects, armies));
+  const hasAny = questGroups.some(g=>g.length>0);
 
   return (
     <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
@@ -563,35 +598,41 @@ function QuestsPanel({ projects, armies }) {
           No quests available — add some units with models to get started.
         </div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
-          {QUEST_TRANSITIONS.map((t, idx) => {
-            const q = quests[idx];
-            if (!q) return (
-              <div key={idx} style={{ background:"#0e0e0e", border:"1px solid #1a1a1a", borderRadius:"6px", padding:"14px 16px", display:"flex", alignItems:"center", gap:"12px", opacity:0.4 }}>
-                <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:"#2a2a2a", flexShrink:0 }}/>
-                <span style={{ color:"#333", fontFamily:"monospace", fontSize:"12px", flex:1 }}>No {t.from.toLowerCase()} models available</span>
-              </div>
-            );
+        <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+          {QUEST_TRANSITIONS.map((t, tIdx) => {
+            const group = questGroups[tIdx];
+            const isCollapsed = collapsed.has(tIdx);
             return (
-              <div key={idx} style={{ background:"#121212", border:`1px solid ${q.color}44`, borderRadius:"6px", padding:"14px 16px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"8px" }}>
-                  <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:q.color, flexShrink:0 }}/>
-                  <div style={{ flex:1 }}>
-                    <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"14px", fontWeight:"600", marginBottom:"3px" }}>
-                      {q.verb} <span style={{ color:q.color }}>{q.count} {q.unitName}</span>
-                    </div>
-                    <div style={{ color:"#555", fontSize:"11px", fontFamily:"monospace" }}>
-                      {q.isTopUp ? `Top up to next squad of ${q.squadSize}` : `1 full squad of ${q.squadSize}`}
-                      <span style={{ color:"#3a3a3a", marginLeft:"6px" }}>{q.from} → {q.to}</span>
-                    </div>
+              <div key={tIdx} style={{ background:"#0e0e0e", border:`1px solid ${group.length>0?t.color+"33":"#1a1a1a"}`, borderRadius:"8px", overflow:"hidden" }}>
+                <div onClick={()=>toggleCollapse(tIdx)} style={{ display:"flex", alignItems:"center", gap:"10px", padding:"10px 14px", cursor:"pointer", userSelect:"none", background:"#111" }}>
+                  <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:group.length>0?t.color:"#2a2a2a", flexShrink:0 }}/>
+                  <span style={{ fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"700", color:group.length>0?t.color:"#333", flex:1, letterSpacing:"0.05em" }}>{t.verb}</span>
+                  <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace" }}>{t.from} → {t.to}</span>
+                  <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace", marginLeft:"4px" }}>{group.length} quest{group.length!==1?"s":""}</span>
+                  <button onClick={e=>{e.stopPropagation();rerollGroup(tIdx);}} style={{ background:"none", border:"1px solid #2a2a2a", color:"#444", borderRadius:"3px", padding:"2px 7px", cursor:"pointer", fontSize:"12px", marginLeft:"4px" }} title="Reroll this stage">↻</button>
+                  <span style={{ color:"#444", fontSize:"10px", display:"inline-block", transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)", transition:"transform 0.15s" }}>▾</span>
+                </div>
+                {!isCollapsed && (
+                  <div style={{ display:"flex", flexDirection:"column" }}>
+                    {group.length===0 ? (
+                      <div style={{ padding:"14px 16px", color:"#333", fontFamily:"monospace", fontSize:"12px" }}>No {t.from.toLowerCase()} models available</div>
+                    ) : group.map((q, qIdx) => (
+                      <div key={qIdx} style={{ padding:"11px 14px", borderTop:"1px solid #1a1a1a", display:"flex", alignItems:"center", gap:"12px" }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ color:"#e8e0d0", fontFamily:"'Cinzel',serif", fontSize:"13px", fontWeight:"600", marginBottom:"3px" }}>
+                            <span style={{ color:"#555", fontWeight:"400" }}>{q.armyName}: </span>{q.verb} <span style={{ color:t.color }}>{q.count} {q.unitName}</span>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                            <span style={{ width:"4px", height:"4px", borderRadius:"50%", background:q.systemColor, flexShrink:0 }}/>
+                            <span style={{ color:q.systemColor, fontSize:"10px", fontFamily:"'Cinzel',serif" }}>{q.systemName}</span>
+                            <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace" }}>· {q.isTopUp?`top up to squad of ${q.squadSize}`:`squad of ${q.squadSize}`}</span>
+                          </div>
+                        </div>
+                        <button onClick={()=>rerollSingle(tIdx, qIdx)} title="Reroll" style={{ background:"none", border:"1px solid #2a2a2a", color:"#444", borderRadius:"4px", padding:"4px 8px", cursor:"pointer", fontSize:"12px", flexShrink:0 }}>↻</button>
+                      </div>
+                    ))}
                   </div>
-                  <button onClick={()=>refreshQuest(idx)} title="Reroll this quest" style={{ background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"4px", padding:"5px 9px", cursor:"pointer", fontSize:"13px", flexShrink:0 }}>↻</button>
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:"6px", borderTop:"1px solid #1e1e1e", paddingTop:"7px" }}>
-                  <span style={{ width:"5px", height:"5px", borderRadius:"50%", background:q.systemColor, flexShrink:0 }}/>
-                  <span style={{ color:q.systemColor, fontSize:"10px", fontFamily:"'Cinzel',serif", fontWeight:"600" }}>{q.systemName}</span>
-                  <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace" }}>· {q.armyName}</span>
-                </div>
+                )}
               </div>
             );
           })}
@@ -600,6 +641,7 @@ function QuestsPanel({ projects, armies }) {
     </div>
   );
 }
+
 
 // ── Setup screen shown before API keys are configured ─────────
 function SetupScreen() {
@@ -643,6 +685,7 @@ function App() {
   const [dragOverId,      setDragOverId]      = useState(null);
   const [dragOverCategory,setDragOverCategory] = useState(null);
   const [collapsedCats,   setCollapsedCats]    = useState(new Set());
+  const [defaultCategory, setDefaultCategory]  = useState(null);
   const [armyDragId,      setArmyDragId]      = useState(null);
   const [armyDragOverId,  setArmyDragOverId]  = useState(null);
   const [errorMsg,        setErrorMsg]        = useState("");
@@ -1025,11 +1068,16 @@ function App() {
                     style={{ borderRadius:"6px", border:`1px solid ${isDropTarget?activeSystem?.color||"#5a5a9a":"#1e1e1e"}`, background:isDropTarget?"#0e0e0e":"transparent", transition:"border-color 0.15s, background 0.15s", padding:"2px" }}
                   >
                     {/* Category header — click to collapse/expand */}
-                    <div onClick={()=>toggleCat(cat)} style={{ display:"flex", alignItems:"center", gap:"8px", padding:"7px 10px", cursor:"pointer", userSelect:"none" }}>
-                      <span style={{ color:"#444", fontSize:"10px", fontFamily:"monospace", transition:"transform 0.15s", display:"inline-block", transform:collapsedCats.has(cat)?"rotate(-90deg)":"rotate(0deg)" }}>▾</span>
-                      <span style={{ color:catProjects.length>0?"#666":"#2a2a2a", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:"600" }}>{cat}</span>
-                      <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace" }}>{catProjects.length}</span>
-                      {isDropTarget && <span style={{ color:activeSystem?.color||"#5a5a9a", fontSize:"10px", fontFamily:"monospace", marginLeft:"4px" }}>← drop here</span>}
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      <div onClick={()=>toggleCat(cat)} style={{ display:"flex", alignItems:"center", gap:"8px", padding:"7px 10px", cursor:"pointer", userSelect:"none", flex:1 }}>
+                        <span style={{ color:"#444", fontSize:"10px", fontFamily:"monospace", transition:"transform 0.15s", display:"inline-block", transform:collapsedCats.has(cat)?"rotate(-90deg)":"rotate(0deg)" }}>▾</span>
+                        <span style={{ color:catProjects.length>0?"#666":"#2a2a2a", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:"600" }}>{cat}</span>
+                        <span style={{ color:"#3a3a3a", fontSize:"10px", fontFamily:"monospace" }}>{catProjects.length}</span>
+                        {isDropTarget && <span style={{ color:activeSystem?.color||"#5a5a9a", fontSize:"10px", fontFamily:"monospace", marginLeft:"4px" }}>← drop here</span>}
+                      </div>
+                      {systemArmies.length>0 && (
+                        <button onClick={e=>{e.stopPropagation();setDefaultCategory(cat);setProjectModal("new");}} style={{ background:"none", border:"none", color:"#3a3a3a", fontSize:"16px", padding:"4px 10px", cursor:"pointer", lineHeight:1 }} title={`Add unit to ${cat}`}>+</button>
+                      )}
                     </div>
                     {!collapsedCats.has(cat) && (catProjects.length===0 ? (
                       <div style={{ border:"1px dashed #1e1e1e", borderRadius:"4px", padding:"14px", textAlign:"center", color:"#2a2a2a", fontSize:"11px", fontFamily:"monospace", margin:"0 2px 4px" }}>
@@ -1089,7 +1137,7 @@ function App() {
       </div>
 
       )}
-      {projectModal&&<ProjectModal project={projectModal==="new"?null:projectModal} armies={systemArmies} defaultArmyId={activeArmyId!=="all"?activeArmyId:systemArmies[0]?.id} onSave={saveProject} onClose={()=>setProjectModal(null)}/>}
+      {projectModal&&<ProjectModal project={projectModal==="new"?null:projectModal} armies={systemArmies} defaultArmyId={activeArmyId!=="all"?activeArmyId:systemArmies[0]?.id} defaultCategory={projectModal==="new"?defaultCategory:null} onSave={saveProject} onClose={()=>{setProjectModal(null);setDefaultCategory(null);}}/>}
       {armyModal&&<ArmyModal army={armyModal==="new"?null:armyModal} gameSystemId={resolvedSid} factions={GAME_SYSTEMS.find(g=>g.id===resolvedSid)?.factions||[]} onSave={saveArmy} onClose={()=>setArmyModal(null)}/>}
     </div>
   );
