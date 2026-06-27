@@ -165,7 +165,7 @@ function parseUnits(data) {
       Painted:          parseInt(r[8]) || 0,
       "Painted & Based":parseInt(r[9]) || 0,
     },
-    hasTokens:  r[10] === "true",
+    hasTokens:  r[10] === "true" || r[10] === true || String(r[10]).toLowerCase() === "true",
     tokenName:  r[11] || "Token",
     tokenStageCounts: {
       Unbuilt:          parseInt(r[12]) || 0,
