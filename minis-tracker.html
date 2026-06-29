@@ -147,6 +147,7 @@ function parseArmies(data) {
     customName: r[3] || "",
     name: r[4] || r[2] || "",
     color: r[5] || ARMY_PALETTE[0],
+    schemeNotes: r[6] || "",
   }));
 }
 
@@ -187,7 +188,7 @@ function parseSettings(data) {
   return out;
 }
 
-function armyToRow(a) { return [String(a.id), a.gameSystemId, a.faction, a.customName||"", a.name, a.color]; }
+function armyToRow(a) { return [String(a.id), a.gameSystemId, a.faction, a.customName||"", a.name, a.color, a.schemeNotes||""]; }
 function unitToRow(p) { const tsc = p.tokenStageCounts || {}; return [String(p.id), String(p.armyId), p.name, p.notes||"", ...STAGES.map(s => String(p.stageCounts[s]||0)), String(!!p.hasTokens), p.tokenName||"Token", ...STAGES.map(s => String(tsc[s]||0)), String(p.squadSize||1), p.category||"Other"]; }
 
 // ── Components ────────────────────────────────────────────────
@@ -332,9 +333,10 @@ function Tooltip({ lines, color, children }) {
 }
 
 function ArmyModal({ army, gameSystemId, factions, onSave, onClose }) {
-  const [faction,    setFaction]    = useState(army?.faction || factions[0] || "");
-  const [customName, setCustomName] = useState(army?.customName || "");
-  const [color,      setColor]      = useState(army?.color || ARMY_PALETTE[0]);
+  const [faction,     setFaction]     = useState(army?.faction || factions[0] || "");
+  const [customName,  setCustomName]  = useState(army?.customName || "");
+  const [color,       setColor]       = useState(army?.color || ARMY_PALETTE[0]);
+  const [schemeNotes, setSchemeNotes] = useState(army?.schemeNotes || "");
   const iStyle = { background:"#111", border:"1px solid #333", color:"#e8e0d0", borderRadius:"4px", padding:"8px 10px", width:"100%", fontFamily:"'Cinzel',serif", fontSize:"13px" };
   const lStyle = { color:"#888", fontSize:"11px", marginBottom:"4px", textTransform:"uppercase", letterSpacing:"0.08em", fontFamily:"monospace" };
   const displayName = customName.trim() || faction;
@@ -358,9 +360,19 @@ function ArmyModal({ army, gameSystemId, factions, onSave, onClose }) {
             </div>
           </div>
         </div>
+          <div>
+            <div style={lStyle}>Painting Scheme Notes <span style={{ color:"#555", textTransform:"none", letterSpacing:0 }}>(optional)</span></div>
+            <textarea
+              style={{ ...iStyle, height:"80px", resize:"vertical", lineHeight:"1.5", fontFamily:"monospace", fontSize:"12px" }}
+              value={schemeNotes}
+              onChange={e=>setSchemeNotes(e.target.value)}
+              placeholder="e.g. Yellow = Iyanden Yellow contrast&#10;Black = Abaddon Black + Eshin Grey highlight"
+            />
+          </div>
+        </div>
         <div style={{ display:"flex", gap:"8px", marginTop:"20px", justifyContent:"flex-end" }}>
           <button onClick={onClose} style={{ background:"none", border:"1px solid #333", color:"#666", borderRadius:"4px", padding:"8px 16px", cursor:"pointer", fontFamily:"monospace", fontSize:"12px" }}>Cancel</button>
-          <button onClick={()=>onSave({...army, faction, customName:customName.trim(), name:displayName, color, gameSystemId})} style={{ background:"#2a2a4a", border:"1px solid #5a5a9a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600" }}>Save</button>
+          <button onClick={()=>onSave({...army, faction, customName:customName.trim(), name:displayName, color, schemeNotes:schemeNotes.trim(), gameSystemId})} style={{ background:"#2a2a4a", border:"1px solid #5a5a9a", color:"#aaaadd", borderRadius:"4px", padding:"8px 20px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"12px", fontWeight:"600" }}>Save</button>
         </div>
       </div>
     </div>
@@ -643,6 +655,178 @@ function QuestsPanel({ projects, armies }) {
 }
 
 
+
+// ── SchemeNotes component ─────────────────────────────────────
+function SchemeNotes({ army, onEdit }) {
+  const [collapsed, setCollapsed] = React.useState(true);
+  return (
+    <div style={{ marginBottom:"14px", background:"#111", border:`1px solid #2a2a1a`, borderRadius:"6px", overflow:"hidden" }}>
+      <div onClick={()=>setCollapsed(c=>!c)} style={{ display:"flex", alignItems:"center", gap:"8px", padding:"9px 14px", cursor:"pointer", userSelect:"none" }}>
+        <span style={{ color:"#444", fontSize:"10px", display:"inline-block", transform:collapsed?"rotate(-90deg)":"rotate(0deg)", transition:"transform 0.15s" }}>▾</span>
+        <span style={{ color:"#7a6a2a", fontSize:"10px", fontFamily:"monospace", textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:"600" }}>🎨 Painting Scheme</span>
+        <button onClick={e=>{e.stopPropagation();onEdit();}} style={{ marginLeft:"auto", background:"none", border:"1px solid #2a2a2a", color:"#555", borderRadius:"3px", padding:"2px 7px", cursor:"pointer", fontSize:"10px", fontFamily:"monospace" }}>Edit</button>
+      </div>
+      {!collapsed && (
+        <div style={{ padding:"0 14px 12px", borderTop:"1px solid #1e1e1a" }}>
+          <pre style={{ color:"#a08030", fontFamily:"monospace", fontSize:"12px", lineHeight:"1.7", whiteSpace:"pre-wrap", margin:"10px 0 0" }}>{army.schemeNotes}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Paint data ────────────────────────────────────────────────
+const CITADEL_PAINTS = {
+  "Base": [
+    "Abaddon Black","Averland Sunset","Balthasar Gold","Baneblade Brown","Bloodreaver Flesh",
+    "Bugman's Glow","Caledor Sky","Caliban Green","Castellan Green","Celestra Grey",
+    "Corax White","Corvus Black","Death Guard Green","Dryad Bark","Fenrisian Grey",
+    "Grey Seer","Incubi Darkness","Ionrach Skin","Iron Warriors","Jokaero Orange",
+    "Kantor Blue","Khorne Red","Leadbelcher","Macragge Blue","Mephiston Red",
+    "Mechanicus Standard Grey","Mournfang Brown","Naggaroth Night","Nocturne Green","Orruk Flesh",
+    "Rakarth Flesh","Ratskin Flesh","Rhinox Hide","Screamer Pink","Steel Legion Drab",
+    "Stormvermin Fur","Tau Light Ochre","The Fang","Thousand Sons Blue","Waaagh! Flesh",
+    "Wraithbone","XV-88","Zandri Dust",
+  ],
+  "Layer": [
+    "Administratum Grey","Alaitoc Blue","Altdorf Guard Blue","Angron Red Clear","Ahriman Blue",
+    "Baharroth Blue","Balor Brown","Bestigor Flesh","Bloodletter","Bloodreaver Flesh",
+    "Brass Scorpion","Cadian Fleshtone","Calgar Blue","Ceramite White","Dawnstone",
+    "Deathclaw Brown","Dechala Lilac","Doktha Ironbronze","Dorn Yellow","Elysian Green",
+    "Emperor's Children","Eshin Grey","Evil Sunz Scarlet","Fang","Fire Dragon Bright",
+    "Flash Gitz Yellow","Flayed One Flesh","Fulgurite Copper","Gauss Blaster Green","Genestealer Purple",
+    "Hashut Copper","Hoeth Blue","Ironbreaker","Iridescent Hornet","Karak Stone",
+    "Kislev Flesh","Krieg Khaki","Liberator Gold","Loren Forest","Lothern Blue",
+    "Lugganath Orange","Lukas the Trickster Yellow","Moot Green","Mournfang Brown","Nurgling Green",
+    "Ogryn Camo","Pallid Wych Flesh","Pink Horror","Ratskin Flesh","Runefang Steel",
+    "Screaming Skull","Skarsnik Green","Skavenblight Dinge","Skullcrusher Brass","Skullreaper Alpha",
+    "Slaanesh Grey","Squig Orange","Stormhost Silver","Straken Green","Sybarite Green",
+    "Tallarn Sand","Temple Guard Blue","Thunderhawk Blue","Troll Slayer Orange","Tyrant Skull",
+    "Ulthuan Grey","Ushabti Bone","Warboss Green","White Scar","Wild Rider Red",
+    "Wulfrik Red","Xereus Purple","Yriel Yellow","Zamesi Desert",
+  ],
+  "Shade": [
+    "Agrax Earthshade","Athonian Camoshade","Biel-Tan Green","Carroburg Crimson","Casandora Yellow",
+    "Coelia Greenshade","Drakenhof Nightshade","Druchii Violet","Fuegan Orange","Nuln Oil",
+    "Reikland Fleshshade","Seraphim Sepia","Skeleton Horde","Targor Rageshade","Thunderhawk Blue",
+    "Tyrant Skull","Ushapthi Bone",
+  ],
+  "Contrast": [
+    "Apothecary White","Aethermatic Blue","Aggaros Dunes","Akhelian Green","Alien Flesh",
+    "Arachnos Blue","Arachnos Dagger","Basilicanum Grey","Berserker Bloodshade","Black Legion",
+    "Black Templar","Blood Angels Red","Blood Scarab","Borealid Green","Cygor Brown",
+    "Dark Angels Green","Darkoath Flesh","Death Guard Green","Doomfire Magenta","Doomfire Orange",
+    "Doomfire Teal","Drakenof Blue","Endless Void","Flesh Tearers Red","Frostheart",
+    "Goregrunta Fur","Gryph-charger Grey","Gryph-Hound Orange","Guilliman Flesh","Haunter Flesh",
+    "Ironjawz Yellow","Karandras Green","Kraken's Tentacle","Leviathan Purple","Luxion Purple",
+    "Magmadroth Flame","Militarum Green","Nazdreg Yellow","Ork Flesh","Orruk Flesh",
+    "Plaguebearer Flesh","Pteraxii Orange","Pylar Glacier","Ratling Grime","Rustblood",
+    "Shyish Purple","Sigmarite","Skeleton Horde","Snakebite Leather","Space Wolves Grey",
+    "Striking Scorpion Green","Talassar Blue","Terradon Turquoise","Tesseract Glow","Tyranic Night",
+    "Ultramarine Blue","Warp Lightning","Wyldwood",
+  ],
+  "Dry": [
+    "Astorath Red","Baneblade Brown","Bauhaus Blue","Brightmane Blond","Chronus Blue",
+    "Cryptek Armourshade Gloss","Dawnstone","Desecrator Black","Eldar Flesh","Etherium Blue",
+    "Golgfag Brown","Hexos Palesun","Imrik Blue","Longbeard Grey","Lucius Lilac",
+    "Necron Compound","Nihilakh Oxide","Nurgling Green","Ogroid Flesh","Praxeti White",
+    "Ryza Rust","Sigmarite","Skullcrusher Brass","Stormfang","Sylvaneth Bark",
+    "Terminus Stone","Tyrant Skull","Wraith Bone",
+  ],
+  "Technical": [
+    "Agrellan Badland","Agrellan Earth","Ardcoat","Astrogranite","Astrogranite Debris",
+    "Blood for the Blood God","Contrast Medium","Crackling Fang","Gemstone Red","Ironearth",
+    "Lahmian Medium","Liquid Green Stuff","Lustre Dust","Martian Ironearth","Martian Ironrust",
+    "Nihilakh Oxide","Nurgles Rot","Predator Ooze","Rekall Flesh","Ryza Rust",
+    "Shield Coat","Spiritstone Red","Stormshield","Tesseract Glow","Typhus Corrosion",
+    "Valhallan Blizzard","Waystone Green","Wirrikoo Blue",
+  ],
+  "Air": [
+    "Averland Sunset","Caledor Sky","Caliban Green","Castellan Green","Celestra Grey",
+    "Corax White","Evil Sunz Scarlet","Flash Gitz Yellow","Iron Warriors","Kantor Blue",
+    "Khorne Red","Leadbelcher","Macragge Blue","Mephiston Red","Screamer Pink",
+    "Stormvermin Fur","The Fang","Thousand Sons Blue","Zandri Dust",
+  ],
+};
+
+const PAINT_RANGE_COLORS = {
+  "Base":      "#4a3a2a",
+  "Layer":     "#2a4a3a",
+  "Shade":     "#2a2a4a",
+  "Contrast":  "#4a2a4a",
+  "Dry":       "#3a3a2a",
+  "Technical": "#2a3a4a",
+  "Air":       "#1a3a4a",
+};
+
+function PaintsPanel({ ownedPaints, onToggle }) {
+  const [collapsed, setCollapsed] = React.useState(new Set());
+  const [search, setSearch] = React.useState("");
+  const toggleSection = (s) => setCollapsed(prev => { const n=new Set(prev); n.has(s)?n.delete(s):n.add(s); return n; });
+  const q = search.toLowerCase();
+
+  const totalOwned = Object.values(CITADEL_PAINTS).flat().filter(p=>ownedPaints.has(p)).length;
+  const totalAll   = Object.values(CITADEL_PAINTS).flat().length;
+
+  return (
+    <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"16px", flexWrap:"wrap", gap:"10px" }}>
+        <div style={{ display:"flex", alignItems:"baseline", gap:"10px" }}>
+          <span style={{ fontFamily:"'Cinzel',serif", fontSize:"16px", fontWeight:"700", color:"#c8b870" }}>🎨 Paint Collection</span>
+          <span style={{ color:"#444", fontSize:"12px", fontFamily:"monospace" }}>{totalOwned} / {totalAll} owned</span>
+        </div>
+        <input
+          value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search paints…"
+          style={{ background:"#111", border:"1px solid #2a2a2a", color:"#e8e0d0", borderRadius:"4px", padding:"6px 12px", fontFamily:"monospace", fontSize:"12px", width:"200px" }}
+        />
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+        {Object.entries(CITADEL_PAINTS).map(([range, paints]) => {
+          const filtered = q ? paints.filter(p=>p.toLowerCase().includes(q)) : paints;
+          if (filtered.length===0) return null;
+          const owned = filtered.filter(p=>ownedPaints.has(p)).length;
+          const col = PAINT_RANGE_COLORS[range] || "#2a2a2a";
+          const isCollapsed = collapsed.has(range) && !q;
+          return (
+            <div key={range} style={{ background:"#0e0e0e", border:`1px solid ${col}66`, borderRadius:"6px", overflow:"hidden" }}>
+              <div onClick={()=>!q&&toggleSection(range)} style={{ display:"flex", alignItems:"center", gap:"10px", padding:"10px 14px", cursor:q?"default":"pointer", userSelect:"none", background:"#111" }}>
+                <span style={{ color:"#555", fontSize:"10px", display:"inline-block", transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)", transition:"transform 0.15s" }}>▾</span>
+                <span style={{ fontFamily:"'Cinzel',serif", fontSize:"13px", fontWeight:"700", color:col.replace("2a","6a").replace("4a","8a"), flex:1 }}>{range}</span>
+                <span style={{ color:"#444", fontSize:"11px", fontFamily:"monospace" }}>{owned}/{filtered.length}</span>
+                <div style={{ width:"80px", height:"4px", background:"#1a1a1a", borderRadius:"2px", overflow:"hidden" }}>
+                  <div style={{ width:`${filtered.length?owned/filtered.length*100:0}%`, height:"100%", background:col.replace("2a","6a"), transition:"width 0.3s" }}/>
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:"4px", padding:"10px 12px" }}>
+                  {filtered.map(paint => {
+                    const owned = ownedPaints.has(paint);
+                    return (
+                      <button key={paint} onClick={()=>onToggle(paint)} style={{
+                        background: owned ? col+"44" : "none",
+                        border: `1px solid ${owned ? col+"88" : "#222"}`,
+                        color: owned ? "#e8e0d0" : "#444",
+                        borderRadius:"3px", padding:"4px 8px", cursor:"pointer",
+                        fontFamily:"monospace", fontSize:"11px",
+                        transition:"all 0.15s",
+                        display:"flex", alignItems:"center", gap:"5px",
+                      }}>
+                        {owned && <span style={{ color:"#5a9a5a", fontSize:"10px" }}>✓</span>}
+                        {paint}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Setup screen shown before API keys are configured ─────────
 function SetupScreen() {
   return (
@@ -677,7 +861,8 @@ function App() {
   const [projectModal,    setProjectModal]    = useState(null);
   const [armyModal,       setArmyModal]       = useState(null);
   const [systemPickerOpen,setSystemPickerOpen]= useState(false);
-  const [activeView,      setActiveView]      = useState("units"); // "units" | "quests"
+  const [activeView,      setActiveView]      = useState("units"); // "units" | "quests" | "paints"
+  const [ownedPaints,     setOwnedPaintsRaw]  = useState(new Set());
   const [nextArmyId,      setNextArmyId]      = useState(1);
   const [nextProjectId,   setNextProjectId]   = useState(1);
   const [status,          setStatus]          = useState("loading"); // loading | ready | error | saving
@@ -728,7 +913,7 @@ function App() {
     setSaveError(false);
     saveTimer.current = setTimeout(async () => {
       try {
-        const armyRows     = [["id","gameSystemId","faction","customName","name","color"], ...newArmies.map(armyToRow)];
+        const armyRows     = [["id","gameSystemId","faction","customName","name","color","schemeNotes"], ...newArmies.map(armyToRow)];
         const unitRows     = [["id","armyId","name","notes","Unbuilt","Built","Primed","Painting","Painted","Painted & Based","hasTokens","tokenName","t_Unbuilt","t_Built","t_Primed","t_Painting","t_Painted","t_PaintedBased","squadSize","category"], ...newProjects.map(unitToRow)];
         const settingsRows = [["key","value"], ...Object.entries(newSettings).map(([k,v])=>[k,typeof v==="object"?JSON.stringify(v):String(v)])];
         await saveAll(armyRows, unitRows, settingsRows);
@@ -747,6 +932,7 @@ function App() {
     activeSystemId: overrides.activeSystemId ?? activeSystemId,
     nextArmyId:     String(overrides.nextArmyId ?? nextArmyId),
     nextProjectId:  String(overrides.nextProjectId ?? nextProjectId),
+    ownedPaints:    JSON.stringify([...(overrides.ownedPaints ?? ownedPaints)]),
   });
 
   // ── Derived state ──
@@ -815,6 +1001,15 @@ function App() {
     setProjects(arr);
     scheduleSave(armies, arr, getSettings());
     setDragId(null); setDragOverId(null); setDragOverCategory(null);
+  };
+
+  const togglePaint = (paint) => {
+    setOwnedPaintsRaw(prev => {
+      const next = new Set(prev);
+      next.has(paint) ? next.delete(paint) : next.add(paint);
+      scheduleSave(armies, projects, getSettings({ ownedPaints: next }));
+      return next;
+    });
   };
 
   const toggleCat = (cat) => setCollapsedCats(prev => {
@@ -892,7 +1087,10 @@ function App() {
                   </span>
                 )}
               </div>
-              <button onClick={()=>setActiveView(v=>v==="quests"?"units":"quests")} style={{ background:activeView==="quests"?"#1e1e12":"none", border:`1px solid ${activeView==="quests"?"#7a6a2a":"#2a2a2a"}`, color:activeView==="quests"?"#c8b060":"#666", borderRadius:"4px", padding:"5px 12px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em", flexShrink:0 }}>⚔ Quests</button>
+              <div style={{ display:"flex", gap:"6px", flexShrink:0 }}>
+                <button onClick={()=>setActiveView(v=>v==="quests"?"units":"quests")} style={{ background:activeView==="quests"?"#1e1e12":"none", border:`1px solid ${activeView==="quests"?"#7a6a2a":"#2a2a2a"}`, color:activeView==="quests"?"#c8b060":"#666", borderRadius:"4px", padding:"5px 10px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em" }}>⚔ Quests</button>
+                <button onClick={()=>setActiveView(v=>v==="paints"?"units":"paints")} style={{ background:activeView==="paints"?"#12181e":"none", border:`1px solid ${activeView==="paints"?"#2a4a6a":"#2a2a2a"}`, color:activeView==="paints"?"#6a9aca":"#666", borderRadius:"4px", padding:"5px 10px", cursor:"pointer", fontFamily:"'Cinzel',serif", fontSize:"11px", fontWeight:"600", letterSpacing:"0.04em" }}>🎨 Paints</button>
+              </div>
             </div>
             <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
               {STAGES.map(s => {
@@ -984,6 +1182,8 @@ function App() {
       {/* ── Body ── */}
       {activeView==="quests" ? (
         <QuestsPanel projects={projects} armies={armies}/>
+      ) : activeView==="paints" ? (
+        <PaintsPanel ownedPaints={ownedPaints} onToggle={togglePaint}/>
       ) : (
       <div style={{ maxWidth:"820px", margin:"0 auto", padding:"16px 20px" }}>
         {/* Stage pills component — reused for army and system views */}
